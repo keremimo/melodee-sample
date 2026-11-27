@@ -14,6 +14,7 @@
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/model/scene_links.h"
 #include <algorithm>
 #include <string>
 
@@ -53,9 +54,17 @@ bool erase_slice(Context& c) {
 }
 } // namespace
 
+void ask_clear_track(Context& c) {
+    const unsigned t = c.ui.track % track_count;
+    if (c.ui.recording) c.notice("Clear track: not in a take");
+    else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");
+    else ask(c, UiState::Ask::ClearTrack, int(t));
+}
+
 bool erase_tap(Context& c) {
     auto& ui = c.ui;
     if (ui.ask != UiState::Ask::None || ui.name.open() || ui.exit_open || ui.seq_held || ui.pad_bank || ui.mute_mode()) return false;
+    if (c.plugin_screen_key(ScreenKey::Erase)) return true; // a plug-in's own page that takes Erase (melodee_screen.h)
     unsigned t = ui.track % track_count;
     switch (ui.page) {
     case PageId::Roll: return !ui.sheet_open && roll_erase(c);
@@ -75,11 +84,7 @@ bool erase_tap(Context& c) {
         return true;
     }
     case PageId::Scenes: c.clear_scene(c.project.scene % pattern_count); return true; // the sequence in hand (one undo)
-    case PageId::Tracks:
-        if (ui.recording) c.notice("Clear track: not in a take");
-        else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");
-        else ask(c, UiState::Ask::ClearTrack, int(t));
-        return true;
+    case PageId::Mixer: return mixer_fx_lit(ui) && chain_erase(c); // its FX block: the lit effect out
     case PageId::Looper: {
         unsigned loop = ui.loop % loop_tracks;
         if (c.host.looper().view(loop).state == Looper::State::Empty) c.notice("L" + std::to_string(loop + 1) + " is empty");
@@ -91,7 +96,9 @@ bool erase_tap(Context& c) {
     case PageId::LayersPage: c.layer_clear(); return true;
     case PageId::ModPage: mod_remove(c); return true;
     case PageId::Project: return project_erase(c);
-    case PageId::Samples: return samples_erase(c);
+    case PageId::Samples: // the trim sheet up: both its ends back; else the file goes from the card
+        if (c.ui.browse.up()) { c.browse_erase(-1); return true; }
+        return samples_erase(c);
     case PageId::Plugins: return plugins_erase(c);
     default: return false;
     }
@@ -112,6 +119,7 @@ void copy_press(Context& c, bool kit_pads, bool key_pads) {
     case CopyHere::Pads: arm(UiState::Copying::Pads); return;
     case CopyHere::Keys: arm(UiState::Copying::Keys); ui.sheet_open = false; return;
     case CopyHere::Steps: arm(UiState::Copying::Steps); ui.sheet_open = false; return;
+    case CopyHere::Scenes: arm(UiState::Copying::Scenes); return;
     case CopyHere::Clip: song_copy(c); return;
     case CopyHere::Project: if (!project_copy(c)) c.notice("Copy: pick a project"); return;
     case CopyHere::Effect: chain_copy(c); return;
@@ -165,6 +173,19 @@ void step_copy_pad(Context& c, unsigned pad) {
     });
     ui.step_cursor = int16_t(st);
     c.notice(all ? what : std::string("The pattern is full"));
+    ui.stop_copying();
+}
+
+void scene_copy_pad(Context& c, unsigned pad) {
+    auto& ui = c.ui;
+    const unsigned n = ui.pad_pattern(pad); // in the bank in view: Pad Bank between the two takes it to another
+    if (ui.copy_from < 0) { // first the sequence to copy
+        if (c.project.scenes[n].plain() && !scene_kept(c.project, n)) { c.notice("SEQ " + std::to_string(n + 1) + " is empty"); return; }
+        ui.copy_from = int16_t(n);
+        return;
+    }
+    if (unsigned(ui.copy_from) == n) return; // then where
+    c.copy_scene(unsigned(ui.copy_from), n);
     ui.stop_copying();
 }
 

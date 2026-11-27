@@ -34,6 +34,27 @@ inline std::string preset_folder_name(std::string_view folder) {
     return std::string(slash == std::string_view::npos ? folder : folder.substr(slash + 1));
 }
 
+// A CLAP preset location's name as its folder (plugin/clap_instance.cpp findPresets): a "/" in it a level, so
+// "PPG/Factory" is PPG, then Factory in it (Melodee Modules: a folder per synth); empty levels and the spaces around
+// a level left out ("" none).
+inline std::string preset_location_folder(std::string_view name) {
+    std::string out, level;
+    auto end = [&] {
+        auto first = level.find_first_not_of(' '), last = level.find_last_not_of(' ');
+        if (first != std::string::npos) {
+            if (!out.empty()) out += '/';
+            out += level.substr(first, last - first + 1);
+        }
+        level.clear();
+    };
+    for (char c : name) {
+        if (c == '/') end();
+        else level += c;
+    }
+    end();
+    return out;
+}
+
 // The rows of `inside` ("" the top): the folders in it, in the order the list first reaches them, then its presets
 // in the list's order. `current`: the program picked last (PluginPrograms::current).
 inline std::vector<PresetRow> preset_rows(const PluginProgramList& list, std::string_view inside, int current) {

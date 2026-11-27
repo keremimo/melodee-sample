@@ -23,6 +23,9 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/sample_lists.h"
+#include "melodee/shell/browse_trim.h"
+#include "melodee/shell/history.h"
 #include <cstdio>
 #include <filesystem>
 #include <cstring>
@@ -148,7 +151,7 @@ void Context::save_sample_as(const std::string& name) {
 
 // A file onto layer ui.layer_load (2-4) of the last pad (roadmap P3): its sample and region new, its tune, level
 // and velocities kept when the layer had a sample; one undo; then back to the page LOAD came from.
-void Context::load_layer(const std::string& path, const std::string& name) {
+void Context::load_layer(const std::string& path, const std::string& name, uint32_t start, uint32_t end) {
     auto& t = track();
     unsigned kit = t.last_pad % sampler_pads, n = unsigned(std::max<int>(ui.layer_load, 1)) % pad_layers;
     if (!n) n = 1;
@@ -165,7 +168,7 @@ void Context::load_layer(const std::string& path, const std::string& name) {
     edit.pad_after = edit.pad_before;
     auto& layer = edit.pad_after.sound.layers[n - 1];
     if (!layer.used()) layer = PadLayer {};
-    layer.sample = uint16_t(slot); layer.start = layer.end = 0;
+    layer.sample = uint16_t(slot); layer.start = start; layer.end = end; // the trim sheet's, else the whole file
     char label[4]; pad_label(kit, label);
     edit.what = "Load " + std::string(label) + " L" + std::to_string(n + 1);
     restore_pad(ui.track, kit, edit.pad_after);
@@ -175,13 +178,13 @@ void Context::load_layer(const std::string& path, const std::string& name) {
     back();
 }
 
-void Context::load_file(const std::string& path, const std::string& name, bool next_empty) {
+void Context::load_file(const std::string& path, const std::string& name, bool next_empty, uint32_t start, uint32_t end) {
     auto& t = track();
     if (!t.sampled()) return;
     const bool keyed = t.engine == EngineKind::Keygroup; // one sound, pad 1: no layers of its own, no next pad
     if (library) { stop_preview(); library->preview(""); } // the pad plays the file now, not its preview too
     if (keyed && ui.layer_load > 0) { ui.layer_load = -1; notice("Keygroup: one sound"); return; }
-    if (ui.layer_load > 0 && !next_empty) { load_layer(path, name); return; }
+    if (ui.layer_load > 0 && !next_empty) { load_layer(path, name, start, end); return; }
     int kit = keyed ? 0 : next_empty ? next_empty_pad(t.last_pad) : int(t.last_pad % sampler_pads);
     if (kit < 0) { notice("No empty pad"); return; }
     int slot = sample_slot(path, name);
@@ -199,6 +202,7 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
     } else sound = PadSound {};
     if (sound.sample != uint16_t(slot)) edit.pad_after.trims.clear(); // round 3: another file's zones are not these
     sound.sample = uint16_t(slot);
+    if (start || end) { sound.start = start; sound.end = end; sound.loop_start = start; } // the trim sheet's (shell/browse_trim.h)
     if (project.samples[size_t(slot)].instrument()) { // played on keys: held while held, no region of its own
         sound.play = PadPlay::Gate; sound.decay = 100; sound.sustain = 100;
         if (!keep) sound.mono = false; // a fresh instrument pad is Poly (chords on Keys); a kept pad keeps its Mono
@@ -395,6 +399,83 @@ void Context::stop_preview() {
     previewing = -1;
 }
 
+namespace {
+// What the trim sheet takes: a file of audio of its own, not a folder, a list, a kit, a bank, an instrument, an
+// expansion, a MIDI file or a preset inside an .sf2.
+bool trimmable(const SampleFile& f) {
+    return !f.folder && !f.list && !f.bank && !f.kit && !f.instrument && !f.expansion && !f.midi && !f.presets && !part_of_file(f.path);
+}
+} // namespace
+
+bool Context::browse_open(unsigned focus) {
+    if (!library || ui.browse.up() || ui.page != PageId::Samples || ui.sheet_open || !track().sampled()) return false;
+    const auto files = library->files();
+    if (ui.files_cursor >= files.size() || !trimmable(files[ui.files_cursor])) return false;
+    const auto& file = files[ui.files_cursor];
+    bool had = false; // already in the project: its slot is kept when the sheet goes down
+    for (const auto& ref : project.samples) had |= ref.used() && file.path == ref.path;
+    const int slot = sample_slot(file.path, file.name);
+    if (slot < 0) { notice("Samples full"); return false; }
+    if (project.samples[size_t(slot)].instrument()) return false;
+    ui.browse = BrowseTrim {};
+    ui.browse.slot = int16_t(slot); ui.browse.fresh = !had; ui.browse.focus = uint8_t(focus % 2);
+    ui.browse.opened_at = now ? now : 1;
+    browse_path = file.path;
+    browse_cursor = ui.files_cursor; browse_generation = library->generation();
+    return true;
+}
+
+void Context::browse_close() {
+    if (!ui.browse.up()) return;
+    const unsigned slot = unsigned(ui.browse.slot) % sample_slots;
+    const bool fresh = ui.browse.fresh;
+    ui.browse = BrowseTrim {};
+    browse_path.clear();
+    stop_preview(); // what the sheet played
+    if (!fresh) return;
+    auto used = samples_in_use(project, edits); // the file went onto a pad, or an undo could bring it back: kept
+    for (const auto& f : pending_files) if (f.slot >= 0) used[size_t(f.slot) % sample_slots] = true;
+    if (ui.chop_sample < sample_slots) used[ui.chop_sample] = true;
+    if (used[slot] || !project.samples[slot].used()) return;
+    project.samples.edit(slot) = SampleRef {};
+    if (project.chops[slot].used()) project.chops.edit(slot) = SampleChop {};
+    if (library) library->load(slot, "");
+}
+
+void Context::browse_erase(int handle) {
+    auto& b = ui.browse;
+    if (!b.up()) return;
+    const FrameView was = browse_view(project, b);
+    if (handle != 1) b.start = 0;
+    if (handle != 0) b.end = 0;
+    if (handle >= 0) b.focus = uint8_t(handle);
+    browse_moved(b, project, was);
+    b.heard_at = std::max<uint32_t>(1, now + chop_heard_ms);
+}
+
+// MIDI thread, from the lights' pass. The sheet goes down once its file is no longer under the cursor (the wheel,
+// Minus / Plus, K1, another folder or drive), the page or the track was left, or LOAD KIT opened over it.
+void Context::browse_tick(uint32_t ms) {
+    auto& b = ui.browse;
+    if (!b.up()) return;
+    bool here = library && ui.page == PageId::Samples && track().sampled() && !ui.sheet_open;
+    if (here && (ui.files_cursor != browse_cursor || library->generation() != browse_generation)) {
+        const auto files = library->files();
+        here = ui.files_cursor < files.size() && files[ui.files_cursor].path == browse_path;
+        browse_cursor = ui.files_cursor; browse_generation = library->generation();
+    }
+    if (!here) { browse_close(); return; }
+    if (!b.heard_at || int32_t(ms - b.heard_at) < 0) return;
+    b.heard_at = 0;
+    const auto h = browse_handles(project, b);
+    if (!ui.settings.preview || !h.frames) return; // B3 off: nothing heard
+    const auto [from, to] = browse_heard(h, b.focus);
+    Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(ui.audition_velocity)};
+    a.pad.sample = uint16_t(b.slot); a.pad.start = from; a.pad.end = to;
+    send(a);
+    previewing = ui.track;
+}
+
 void Context::browser_tick() {
     if (!library) return;
     bool here = ui.page == PageId::Samples && track().sampled(); // a kit's browser or a keygroup's
@@ -405,6 +486,11 @@ void Context::browser_tick() {
         files_row_wanted = -1;
         ui.files_drive = uint8_t(library->drive());
         if (here && ui.settings.preview) preview_cursor();
+    }
+    if (here && (ui.files_cursor != audio_cursor || library->generation() != audio_generation)) { // K2 / K3's cards
+        audio_cursor = ui.files_cursor; audio_generation = library->generation();
+        const auto files = library->files();
+        ui.files_audio = ui.files_cursor < files.size() && trimmable(files[ui.files_cursor]);
     }
     if (!here && previewing >= 0) { // away from the browser: what it played stops (B3 stays as it was)
         stop_preview();

@@ -17,19 +17,19 @@
 // led_colours.h squares a level before the 0-127 drive, so under about 0.2 a
 // colour falls apart (0.07 drove tracks 1 and 2 as pure red, 0.04 drove
 // nothing): Faint, 0.25, is the lowest level at which all sixteen track
-// colours keep their hue.
+// colours keep their hue. The screen's colours reach the LEDs through led().
 namespace melodee::pad_light {
 
 constexpr float off = 0, faint = 0.25f, dim = 0.4f, mid = 0.65f, full = 1.0f;
 constexpr uint32_t blink_ms = 150; // a change waiting for the bar: a pattern, a track's next pattern
 constexpr uint32_t flash_ms = 250; // waiting on you: a take's pad, the pad a question is about
 
-enum class Hue : uint8_t { None, Track, Loop, White, Red, Orange };
+enum class Hue : uint8_t { None, Track, Loop, White, Red, Orange, Sub }; // Sub: a mixer submix's
 
 // A pad's light: the drive the LEDs get, and what it says (`status`, the tests).
 struct Look {
     Rgb rgb {};
-    uint32_t colour = 0; // 0xRRGGBB at full
+    uint32_t colour = 0; // 0xRRGGBB at full, as the LEDs take it (led())
     float level = 0;     // 0..1, a flare's included
     Hue hue = Hue::None;
     bool lit() const { return rgb.r || rgb.g || rgb.b; }
@@ -43,8 +43,25 @@ inline Look of(uint32_t colour, Hue hue, float level) {
     out.colour = colour; out.level = level; out.hue = hue;
     return out;
 }
-inline Look track(unsigned t, float level) { return of(ui::track_shades[t % 16][0], Hue::Track, level); }
-inline Look loop(unsigned l, float level) { return of(ui::loop_shades[l % 4][0], Hue::Loop, level); }
+// A screen colour (ui/shades.h) as the LEDs' 0xRRGGBB. The screen's values are for the eye, as a level is, and
+// the LEDs are linear, so each channel is squared as led_colours.h squares a level, then the brightest raised to
+// full: Coral FF7A5C drives FF3A21, not a pale FF7A5C, and Teal (46D9B0) lights as bright as Coral.
+constexpr uint32_t led(uint32_t screen) {
+    const uint32_t r = (screen >> 16) & 255, g = (screen >> 8) & 255, b = screen & 255;
+    const uint32_t most = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    if (!most) return 0;
+    auto up = [most](uint32_t c) { return (c * c * 255 + most * most / 2) / (most * most); };
+    return up(r) << 16 | up(g) << 8 | up(b);
+}
+// A kit pad's own colour (PadSound::colour) as the LEDs take it: one of the sixteen (Stage's COLOUR) as led()
+// makes it; an MPC kit's as it came.
+constexpr uint32_t pad_led(uint32_t colour) {
+    for (const auto& shades : ui::track_shades) if (shades[0] == colour) return led(colour);
+    return colour;
+}
+inline Look track(unsigned t, float level) { return of(led(ui::track_shades[t % 16][0]), Hue::Track, level); }
+inline Look loop(unsigned l, float level) { return of(led(ui::loop_shades[l % 4][0]), Hue::Loop, level); }
+inline Look sub(unsigned n, float level) { return of(led(ui::sub_shades[n % 8][0]), Hue::Sub, level); }
 inline Look white(float level) { return of(0xFFFFFF, Hue::White, level); }
 inline Look red(float level) { return of(0xFF0000, Hue::Red, level); }
 inline Look orange(float level) { return of(0xFF7300, Hue::Orange, level); } // the Looper's overdub

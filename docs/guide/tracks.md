@@ -5,7 +5,8 @@ Previous: [Basics](basics.md) · [Contents](../GUIDE.md) · Next: [Kits and samp
 ## Select a track
 
 Hold **PAD BANK** and press a pad. This works on any page. Pad 1 is track 1.
-To see all 16 tracks, open the [Tracks page](#the-tracks-page).
+To see the tracks side by side, open the [mixer](mixer-and-effects.md#the-mixer):
+its pads select tracks too.
 
 While **PAD BANK** is held the pads are the tracks, and the screen stays on
 the page you are on. Only the keys change: **TRACKS**, **MOVE** and
@@ -13,7 +14,7 @@ the page you are on. Only the keys change: **TRACKS**, **MOVE** and
 **K1**–**K3** set the selected track's level, pan and send to bus A while
 it is held, on any page.
 
-- Press **B1** (**TRACKS**) to open the Tracks page.
+- Press **B1** (**TRACKS**) to open the mixer on the tracks.
 - Press **B2** (**MOVE**), then a track, then a pad to move the track there.
   A track already there swaps places with it. The track takes its sound,
   patterns and mixer strip, and everything that refers to it: its Song
@@ -28,40 +29,30 @@ it is held, on any page.
 
 ![Moving a track](../images/screens/movetrack.png)
 
-## The Tracks page
+## Track speed
 
-Press **PAD FX** and **KNOB FX** together to open **Tracks**: all 16
-tracks as the pads are laid out, with the selected track as a mixer strip on
-the right.
+A track can play its patterns slower or faster: ×1/64, ×1/32, ×1/16, ×1/8,
+×¼, ×½, ×¾, ×1, ×1½, ×2 or ×4. Set it on Patterns with **SHIFT** + **K3**
+(**SPEED**). At ×1/64 one bar of the pattern lasts 64 bars. The notes stay as
+written. The Patterns header and track list show the speed when it is not ×1.
 
-![Tracks](../images/screens/tracks.png)
+## Track direction
 
-Each cell shows the track number, the pattern it plays, a symbol for its
-type and its level. A crossed speaker means muted. The bar along the
-bottom of a cell shows how much processing the track uses (green, amber
-from 60 %, red from 85 %).
+A track can play its patterns' steps forward (**FWD**), backward (**REV**) or
+in a new order each pass (**RND**). Press **SHIFT** + **LOOP** on Patterns to
+step through them. A step is one step of the pattern's Q; each note keeps its
+place in its step and its length.
 
-| Control | Action |
-| --- | --- |
-| Pads | Select a track. An empty track opens its [new track cards](#make-a-new-track). |
-| Encoder, **−** / **+** | Select a track. |
-| **ERASE** + pad | Clear that track (asks first). |
-| **K1** | Level of the selected track. |
-| **K2** | Pan of the selected track. |
-| **K3** | Send of the selected track to bus A. |
-| **SHIFT** + **K1** | Track speed: ×½, ×¾, ×1, ×1½ or ×2. The track's patterns play that much slower or faster. |
-| Fader | Level of the selected track. |
-| Encoder push | Open the track's Stage. |
-| **SHIFT** + encoder push | Name the track (see [Naming](projects-and-files.md#naming)). The name stays when you pick another sound or plug-in. Undo takes it back. |
-| **B1** | Come back to Tracks from Sends or an effect chain. |
-| **B2** | Open Sends (Full only). |
-| **B3** | Open the effect chains (press again for the next chain). |
-| **SHIFT** + **B2** / **B3** | Move / copy a track. |
+- **REV** plays the last step first.
+- **RND** plays every step once a pass, in an order of its own each pass.
+  The orders are the same each time the pattern plays from the top.
+- Motion and its locks follow the steps. A kit lane of its own length turns
+  round on its own length.
+- The editors' playhead shows the step that plays.
+- An audio track plays forward.
 
-Tracks, Sends and the effect chains share the keys **TRACKS**, **SENDS** and
-**FX**. Press **PAD FX** and **KNOB FX** together to open Tracks from any
-page. A frozen track shows a snowflake in its cell (see
-[Freeze a track](#freeze-a-track)).
+The Patterns header shows ◀ or a die beside the speed, and so does the
+playing pattern's cell.
 
 ## Make a new track
 
@@ -106,9 +97,9 @@ or pad 15 (Settings).
 On the types, **B1** (**CANCEL**) selects the nearest track that is not
 empty. When every track is empty, **B1** has no job.
 
-When you pick an empty track with a pad (on Tracks, with **PAD BANK** held,
-or on a Song lane), Stage opens and, once the track is made, you go back to
-the page you picked it on.
+When you pick an empty track with a pad (on the mixer, with **PAD BANK**
+held, or on a Song lane), Stage opens and, once the track is made, you go
+back to the page you picked it on.
 
 ## Freeze a track
 
@@ -146,9 +137,9 @@ nothing. It works on the PRINT sheet and on a frozen track's Stage.
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
 
 Level, pan, sends, mute and solo stay live on a frozen track. A kit's pad
-sends are printed with it and still reach the buses. Tracks and Stage show
-a snowflake on a frozen track; Stage shows the print of the pattern
-playing. Cards whose values the print holds are dim with a snowflake.
+sends are printed with it and still reach the buses. Stage and the Menu's
+header show a snowflake on a frozen track; Stage shows the print of the
+pattern playing. Cards whose values the print holds are dim with a snowflake.
 
 Changing anything a print is made of (the sound, a pad, the chain, a
 frozen pattern's notes) asks **Unfreeze track N?** first: **B3**

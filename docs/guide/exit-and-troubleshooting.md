@@ -24,8 +24,8 @@ or else the last project you opened or saved.
 
 ## Troubleshooting
 
-**Melodee does not start.** Check that the MPC has firmware 1.3.0.12 or
-1.4.0.7, and that the `autorun` folder and `autorun.sh` are at the top
+**Melodee does not start.** Check that the MPC has firmware 1.3.0.12,
+1.4.0.7 or 1.4.0.8, and that the `autorun` folder and `autorun.sh` are at the top
 level of the card, with their files unchanged. On firmware 1.4, Developer
 Mode must be on (stock app Settings, **DEV ENHANCEMENTS (BETA)**), and the
 stock app asks before it runs the card's autorun script: press Yes.
@@ -46,14 +46,14 @@ report the problem.
 load per core, the audio dropouts and card read problems, each in amber
 with a count once it happens. Use a larger
 audio buffer in **AUDIO**, or remove effects or plug-ins from the busiest
-track (the Tracks page shows each track's load).
+track (the Menu's header shows the CPU and the selected track's load).
 
 ![About with dropouts and card read problems](../images/screens/abouttrouble.png)
 
 **A plug-in does not load.** The picker shows the reason, for example
 "Windows and Mac builds only". Melodee runs only Linux ARM builds. A
 plug-in that loads but cannot open shows **WON'T OPEN** or **MISSING
-LIBRARY** on its Edit page. If a 32-bit plug-in crashes, its page says
+LIBRARY** on Stage's **EDIT** page. If a 32-bit plug-in crashes, its page says
 **STOPPED**: pick it again to reopen it.
 
 **An instrument or a long sample loads slowly.** An instrument's FLAC,

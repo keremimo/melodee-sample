@@ -4,20 +4,21 @@ Previous: [Looper](looper.md) · [Contents](../GUIDE.md) · Next: [MIDI and sync
 
 ## Signal flow
 
-Each track plays through its effect chain (six slots), its level and pan,
-and its sends to four buses (A–D). Each bus has its own chain (six slots)
-and a return level. Everything then goes through the master chain (six
-slots), the master compressor and **MAIN VOLUME**. A kit pad can have its
-own chain of four effects before the track's chain, and its own sends to
-the four buses.
+Each track plays through its effect chain (six slots), then its **strip**:
+trim, a nine-band EQ, a compressor and width. Then its level and pan. A
+track goes to the master or to one of eight **submixes**, and sends to the
+four buses (A–D).
 
-The input you monitor joins the mix before the master chain, at the level
-a take of it plays back. Its Rec Input FX are heard while you monitor.
+A submix has the same parts as a track: a chain, a strip, level, pan, mute,
+solo and four sends. It plays to the master. Each bus has its own chain, a
+strip and a return level. The master has a strip, its chain (six slots), the
+master compressor and **MAIN VOLUME**.
 
-Press **PAD FX** and **KNOB FX** together, from any page, to open the mixer
-on **Tracks** (see [The Tracks page](tracks.md#the-tracks-page)). Tracks,
-Sends and the effect chains share one row of keys: **B1** (**TRACKS**),
-**B2** (**SENDS**) and **B3** (**FX**).
+A kit pad can have its own chain of four effects before the track's chain,
+and its own sends to the four buses (see [Pad sends](#pad-sends)).
+
+The input you monitor goes through its own strip and joins the mix before
+the master chain. Its Rec Input FX are heard while you monitor.
 
 ### Level meters
 
@@ -35,29 +36,167 @@ runs, they show the input instead. They light as on the stock MPC Sample:
 
 A level shows at once and falls back by 60 dB a second.
 
-## Sends
+## The mixer
 
-Press **B2** (**SENDS**) on Tracks or on an effect chain to
-open **Sends**: one bus at a time, with every track's send to it, eight
-tracks at a time. Press **−** / **+** to change the bus. The top row shows
-each bus with its first effect and its return.
+Press **PAD FX** and **KNOB FX** together, from any page, to open the
+mixer. It is also pad 9 (**MIXER**) on the Menu's **GO**.
 
-![Sends](../images/screens/sends.png)
+![The mixer](../images/screens/mixer.png)
 
-**K1** sets the selected track's send, **K2** selects the bus, **K3** sets
-the bus return.
+The mixer opens on the strips: every channel of the row side by side, each
+with its number, a stereo meter, its fader and **M** or **S** when on. The
+selected channel's strip is lit.
 
-Sends and the **SENDS** pages on Stage are in Full. In Basic, Tracks keeps
-each track's level, pan and send to bus A (see
+Hold **+** to open the selected channel's card. Hold **−** to go back to the
+strips. The mixer stays on the view you left it on until Melodee restarts.
+
+![The card](../images/screens/mixercard.png)
+
+The card is in the middle. Its neighbours are narrow strips left and right.
+The card shows the channel's name, **M** and **S**, its meter, its fader,
+its pan and one block: the one **B1**–**B3** light. On the strips,
+**K1**–**K3** still set the lit block.
+
+| Key | Block | **K1**–**K3** |
+| --- | --- | --- |
+| **B1** | **SENDS**: the four sends, with each bus's first effect. | Send A, B, C. **SHIFT**: pan, output, send D. |
+| **B1** again | **FX**: the channel's effect chain. | The lit effect's values. **SHIFT**: its second row. |
+| **B2** | **EQ**: the nine bands as a curve. **B2** again: the next three bands. | The three bands in hand. |
+| **B3** | **COMP**: the compressor's curve and its gain reduction. | Amount, ratio, speed. **SHIFT**: key, mix, gain. |
+
+Each key's dots show which page of it is in view. The block you pick stays
+when you pick another channel.
+
+### Controls
+
+| Control | Does |
+| --- | --- |
+| Pads | Select a channel. No sound. An empty track opens its [new track cards](tracks.md#make-a-new-track). |
+| Encoder | Turn: select the next channel. |
+| Encoder push | EQ or COMP: on or off. FX: edit the lit effect on its FX page; on the **+**, the effect picker. |
+| **SHIFT** + encoder push | Name the selected track (see [Naming](projects-and-files.md#naming)). |
+| **−** / **+** | Move through the lit block: SENDS and COMP their first and second row, EQ its three groups, FX its effects and the **+**. Acts when you let go. |
+| Hold **+** | The card. |
+| Hold **−** | The strips. |
+| **SHIFT** + **−** / **+** | Undo / redo, as on every page. |
+| Fader | The level of the selected channel. |
+| **PAD BANK** | The tracks, or the submixes, buses, input and master (see [Submixes, buses, input and master](#submixes-buses-input-and-master)). |
+| **MUTE** | As printed. Held or latched: a pad mutes its channel, **SHIFT** + pad solos it. **SHIFT** + **MUTE**: unmute all. On FX, a tap turns the lit effect off or on. |
+| **ERASE** + pad | Clear that track (asks first). |
+| **ERASE** | On FX: remove the lit effect. **SHIFT** + **ERASE** copies it. |
+| **SHIFT** + **KNOB FX** | The selected channel's full effect page. **B1** (**MIXER**) comes back. |
+
+A pad lights in its channel's colour, as bright as its level. The
+selected channel's pad is lit full; a muted one is red.
+
+In Basic, the mixer shows **SENDS** with send A only, and **SHIFT** +
+**K1** pan. There are no EQ, COMP, FX or submixes (see
 [Basic and Full](settings.md#basic-and-full)).
 
-On a kit track press **B2** (**SENDS**) again to see the kit's pads
-instead of the tracks (the bank in view, as the pads sit), each with its
-own send to the bus shown. Hit a pad
-or turn the encoder to select it; **K1** sets its send. Press **B2** again
-to go back to the tracks.
+### SENDS
 
-![Sends on the pads](../images/screens/sendspads.png)
+Each column is one bus: the send's amount, a bar, the bus letter and the
+bus's first effect. **K1**–**K3** set sends A, B and C. Press **+** for the
+second row: **K1** pan, **K2** output, **K3** send D. **−** goes back.
+Holding **SHIFT** shows the other row while it is held.
+
+**OUTPUT** sends a track to the master or to submix 1–8. A track that goes
+to a submix shows the submix's number in its colour on its card.
+
+![A track that plays into submix 2](../images/screens/mixerrouted.png)
+
+### FX
+
+Press **B1** again for the channel's effect chain in the card. The lit
+effect is the one **K1**–**K3** set; **−** / **+** move to the next effect
+and to the **+**.
+
+![FX in the mixer](../images/screens/mixerfx.png)
+
+- Push the encoder on an effect to edit it on its FX page (every row, and a
+  plug-in's own screen). **B1** (**MIXER**) comes back.
+- Push the encoder on the **+** to open the effect picker. Once you add an
+  effect or a plug-in, or press **B1** (**BACK**), you come back to the
+  mixer.
+- Tap **MUTE** to turn the lit effect off or on. An effect that is off is
+  dim.
+- Tap **ERASE** to remove the lit effect. **SHIFT** + **ERASE** copies it.
+
+### EQ
+
+Nine fixed bands, an octave apart: 63, 125, 250 and 500 Hz, and 1, 2, 4, 8
+and 16 kHz, each ±12 dB. **K1**–**K3** set three bands at a time:
+
+| Press | **K1**–**K3** |
+| --- | --- |
+| **B2** | 63, 125, 250 Hz (**EQ LOW**) |
+| **B2** again, or **+** | 500 Hz, 1 kHz, 2 kHz (**EQ MID**) |
+| **B2** again, or **+** | 4, 8, 16 kHz (**EQ HIGH**) |
+
+![EQ](../images/screens/mixereq.png)
+
+The curve shows the nine bands; the three in hand are shaded and drawn in
+the knobs' colours. Behind the curve, in grey, is what the channel plays
+now. Push the encoder to turn the EQ off or on; its values are kept. A band
+at 0 dB uses no processing.
+
+### COMP
+
+**K1** amount: where the compressor starts, in dB below full scale (OFF at
+0). **K2** ratio, 1.5:1 to 20:1. **K3** speed: **FAST**, **MED**, **SLOW**
+or **AUTO**. The second row: **K1** key (the channel itself, a track, a bus
+or a submix), **K2** mix (dry against compressed), **K3** gain after it.
+
+![COMP](../images/screens/mixercomp.png)
+
+The picture shows the curve with the sound's dot on it, and the gain
+reduction over the last seconds. Push the encoder to turn the compressor
+off or on.
+
+### Submixes, buses, input and master
+
+Press **PAD BANK** for the second row: the eight submixes on pads 1–8, the
+buses A–D on pads 9–12, the input on pad 15 and the master on pad 16. Press
+**PAD BANK** again for the tracks. Hold **PAD BANK** and press a pad to
+select a track and see the tracks again.
+
+![A submix](../images/screens/mixersub.png)
+
+| Channel | Fader | **B1** | **B3** |
+| --- | --- | --- | --- |
+| Submix | Its level | **SENDS**, again **FX** | **COMP** |
+| Bus | Its return | **FX** | **COMP** |
+| Input | Input Config's gain | **INPUT** | **COMP** |
+| Master | Its trim | **FX** | The master compressor |
+
+Every channel has **EQ** on **B2**. Submixes have colours of their own;
+buses have the Looper's.
+
+![A bus](../images/screens/mixerfxbus.png)
+
+On the input, **INPUT** shows what it plays after its strip, with the peak
+in dB. **K1** trim, **K2** monitor (**OFF**, **AUTO**, **ON**, as on Input
+Config), **K3** record: **DRY** (takes record the input before its strip)
+or **WET** (after it).
+
+![The input](../images/screens/mixerinput.png)
+
+On the master, **B3** is the master compressor (**SHIFT** + **Pad 5**,
+see [Compressor](#compressor)), with the same values: **K1** attack, **K2**
+release, **K3** amount, **SHIFT** + **K3** In Boost. Push the encoder to
+turn it on or off.
+
+![The master](../images/screens/mixermaster.png)
+
+In mute mode on this row, a pad mutes its submix or bus, and **SHIFT** +
+pad solos a submix. A submix's solo solos the tracks that go to it.
+
+### Record mixer moves
+
+With **SEQ RECORD** on, the selected track's level, pan, sends and strip
+(trim, width, the nine bands and the compressor's values) are recorded as
+Motion lanes in the pattern. Edit or erase them on the Motion page. Submix,
+bus, input and master moves are not recorded.
 
 ## Pad sends
 
@@ -69,44 +208,36 @@ A pad's send is taken after its own chain, its volume and its pan, before
 the kit track's chain. It then follows the kit track's level, pan, mute and
 solo: turn the kit down and its reverb goes down with it.
 
+Set them on the kit's Stage: press **SAMPLE**, then **B3** until **SENDS**
+is lit.
+
+![SENDS on a kit](../images/screens/stagekitsends.png)
+
+| Control | Does |
+|---|---|
+| Hit a pad | Selects the pad. |
+| **K1** | The selected pad's send to the bus shown. |
+| **K2** | Selects the bus, A–D. |
+| **K3** | The bus return. |
+
+A pad lights as bright as its send to the bus shown. A pad that sends
+nothing stays dark. The selected pad is white.
+
+The kit track's own sends are on the mixer's **SENDS**. They send the whole
+kit after its chain. A pad send sends one pad before that chain. Both reach
+the same bus and add up.
+
 ### Example: one reverb for snare and hat, kick dry
 
-1. Put the reverb on bus A. Press **PAD FX** and **KNOB FX** together, then
-   **B2** (**SENDS**). Press **−** / **+** until bus A is shown. Press **B3**
-   (**FX**) until the header shows **BUS A**. Push the encoder on **+**
-   and choose a reverb.
+1. Put the reverb on bus A. Press **PAD FX** and **KNOB FX** together, press
+   **PAD BANK**, then pad 9 (bus A). Push the encoder on **+** and choose a
+   reverb.
 2. Press **SAMPLE** on the kit track for Stage. Press **B3** until
    **SENDS** is lit.
 3. Hit the snare pad. Turn **K1** to 30 %.
 4. Hit the hat pad. Turn **K1** to 15 %.
-5. Leave the kick at 0 %. Hold **SHIFT** and check that **K1** (**KIT
-   SEND**) is 0 %, or the whole kit, kick included, goes to the bus.
-
-### Controls
-
-| Page | Control | Does |
-|---|---|---|
-| Stage, **SENDS** (kit) | Hit a pad | Selects the pad. |
-| | **K1** | The selected pad's send to the bus shown. |
-| | **K2** | Selects the bus, A–D. |
-| | **K3** | The bus return. |
-| | **SHIFT** + **K1** | The kit track's own send (**KIT SEND**). |
-| Sends (kit), **B2** again | Hit a pad, or turn the encoder | Selects the pad. |
-| | **K1** | The selected pad's send to the bus shown. |
-| | **K2** | Selects the bus. |
-| | **K3** | The bus return. |
-| | **−** / **+** | The bus. |
-| | **B2** | Back to the tracks. |
-
-On both pages a pad lights as bright as its send to the bus shown. A pad
-that sends nothing stays dark. The selected pad is white.
-
-### Kit send and pad sends
-
-The kit send (**SHIFT** + **K1** on Stage **SENDS**, and **K1** on Sends
-with the tracks shown) sends the whole kit after the kit track's chain. A
-pad send sends one pad before that chain. Both reach the same bus and add
-up.
+5. Leave the kick at 0 %. On the mixer, check the kit's send A is 0 %, or
+   the whole kit, kick included, goes to the bus.
 
 ### Record send moves
 
@@ -126,22 +257,40 @@ Loading an MPC drum program (`.xpm` or `.xty`) as a kit brings its pads'
 Send 1–4 as their sends to buses A–D, and the program's own Send 1–4 as
 the kit track's sends. Stock MPC Sample projects (`.xpj`) bring no sends.
 
+## Pad outputs
+
+On a kit, each pad can play into a submix instead of the kit, as on MPC 3.
+On the kit's Stage **SENDS** page, hit the pad, hold **SHIFT** and turn
+**K2** (**OUTPUT**): **KIT** (the default) or **SUB 1** to **SUB 8**. The
+page shows the submix under the pad's name, in the submix's colour.
+
+![A pad sent to submix 3](../images/screens/stagekitsends.png)
+
+- The pad goes to the submix after its own effects, volume and pan, at the
+  kit track's level, pan and mute, where its pad sends are taken. The kit
+  track's effects and strip are not on it.
+- Soloing the submix keeps the kit heard.
+- **STEMS** writes the pad in the submix's WAV, not the kit's. An **MPC 3**
+  export sends it to the same submix in MPC 3. A **LIVE SET** plays it in
+  the kit and says *mixer settings left out*.
+- A kit with pads sent to submixes cannot be frozen: set them to **KIT**
+  first.
+
 ## Effect chains
 
-Press **B3** (**FX**) on Tracks or Sends to open the effect chains. Press
-**FX** again to go to the next chain. The header names the chain in view,
-and the dots under **FX** show where you are:
+Each track, submix and bus, and the master, has an effect chain. In the
+mixer press **B1** again for the selected channel's chain in the card (see
+[FX](#fx)), or **SHIFT** + **KNOB FX** for its full FX page. **SHIFT** +
+**KNOB FX** opens the selected track's chain from any other page.
 
-- **TRACK FX**: the selected track's chain.
-- **BUS A**–**D**: the chain of the bus shown on Sends, with its return.
-- **MASTER**: the master chain.
-- On a kit, **PAD** and the pad's name: the last pad's own chain, four
-  slots.
-
-**SHIFT** + **KNOB FX** opens the track's chain from any page. Press it again
-for the bus, the master and, on a kit, the pad's chain, as **B3** does.
+On the FX page, **B1** (**MIXER**) goes back to the mixer on that channel.
+**B3** (**FX**) goes to the next chain: the track's, a bus's (the one last
+in view), the master's and, on a kit, the last pad's own chain (four slots). The header
+names the chain in view, and the dots under **FX** show where you are.
 
 ![A track's effect chain](../images/screens/rack.png)
+
+![A submix's effect chain](../images/screens/fxsub.png)
 
 ![A pad's effect chain](../images/screens/padfx.png)
 
@@ -234,7 +383,8 @@ pattern is in: a row for each punch, where it sounds.
 
 ## Compressor
 
-Press **SHIFT** + **Pad 5** for the master compressor.
+Press **SHIFT** + **Pad 5** for the master compressor. It is also the
+master's **B3** in the mixer.
 
 ![Compressor](../images/screens/compressor.png)
 
@@ -251,8 +401,8 @@ hits along the bottom.
 
 The fader controls the last knob you turned on the selected track: an
 engine parameter, an effect, a pad value, the level, pan or a send. Some
-pages give it their own job: the level on Tracks, the send on Sends, A to
-B on Knob FX, the amount on the Compressor and the mix on Flex Beat.
+pages give it their own job: the selected channel's level on the mixer, A
+to B on Knob FX, the amount on the Compressor and the mix on Flex Beat.
 
 Press **SHIFT** + **Pad 9** to open the **Fader** page. It shows the value
 the fader follows, its name and the fader. Press **SHIFT** + **Pad 9** again
@@ -260,11 +410,13 @@ to close it.
 
 ![The Fader page](../images/screens/fader.png)
 
-- **K1**–**K3** are the track's favourite values. Turn one, or any knob on
-  any page, and the fader takes it.
+- **K1**–**K3** are the track's favourite values. Turn one and the fader
+  takes it. Any knob on any page does the same while the fader is not
+  pinned.
 - **B2** (**PIN**) keeps the fader on its current target.
 - **B3** (**FADER**) turns the fader on or off.
-- Turn the encoder to choose a fader target. On a kit track: Pad Volume,
+- Turn the encoder to choose a fader target. The target you choose is
+  pinned: **B2** unpins it. On a kit track: Pad Volume,
   Pad Pan, Pad Tune, Pad Attack, Pad Decay, Pad Cutoff, Kit Volume. On
   every track: Mod Wheel, Track Level, Track Pan, Send A, Send B, Send C,
   Send D. On a plug-in, keygroup or MIDI track: Pitch Bend, after Mod Wheel.

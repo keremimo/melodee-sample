@@ -40,8 +40,10 @@ struct ScreenView {
     bool operator!=(const ScreenView& o) const { return !(*this == o); }
 };
 
-// An input on the page, numbered as MELODEE_SCREEN_WHEEL, _PUSH and _STEP are.
-enum class ScreenKey : uint8_t { Wheel = 0, Push = 1, Step = 2 };
+// An input on the page, numbered as MELODEE_SCREEN_WHEEL, _PUSH, _STEP, _MUTE and _ERASE are.
+enum class ScreenKey : uint8_t { Wheel = 0, Push = 1, Step = 2, Mute = 3, Erase = 4 };
+// The printed buttons a plug-in's page takes (its keys(), as MELODEE_SCREEN_KEY_MUTE and _ERASE are).
+constexpr uint8_t screen_key_mute = 1, screen_key_erase = 2;
 struct ScreenInput {
     ScreenKey key = ScreenKey::Wheel;
     int32_t value = 0;

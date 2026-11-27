@@ -37,6 +37,7 @@ struct PluginPanel {
     // drawn at least once, and `params` hold the three it puts on K1-K3 (bound as plugin_screen_slot + k).
     bool has_screen = false;
     bool screen = false;
+    uint8_t screen_keys = 0;       // the printed buttons that screen's page takes (screen_key_mute, screen_key_erase)
     char name[32] {};
     char format[8] {};             // VST3, VST2, ARMV7
     char error[64] {};             // why it failed
@@ -140,6 +141,12 @@ constexpr unsigned plugin_binding_entry(int32_t id) { return unsigned(id) >> 16;
 constexpr unsigned plugin_binding_shown(int32_t id) { return unsigned(id) & 0xffff; }
 // A plug-in's own screen names its three (PluginPanel::screen): K`k` is bound as plugin_screen_slot + k.
 constexpr unsigned plugin_screen_slot = 0x8000;
+// A companion screen's own edit (plugin/companion_screen.h): the parameter by its index in the plug-in, as
+// plugin_index_slot + index (below plugin_screen_slot: indices up to 16383).
+constexpr unsigned plugin_index_slot = 0x4000;
+constexpr bool plugin_binding_indexed(int32_t id) {
+    return plugin_binding_shown(id) >= plugin_index_slot && plugin_binding_shown(id) < plugin_screen_slot;
+}
 // Which of K1-K3 a binding id is on.
 constexpr unsigned plugin_binding_k(int32_t id) {
     return plugin_binding_shown(id) >= plugin_screen_slot ? (plugin_binding_shown(id) - plugin_screen_slot) % 3 : plugin_binding_shown(id) % 3;
@@ -147,7 +154,7 @@ constexpr unsigned plugin_binding_k(int32_t id) {
 // The panel's card for a binding id, null when that parameter is not on K1-K3 now.
 inline const PluginPanelParam* plugin_card(const PluginPanel& panel, int32_t id) {
     unsigned shown = plugin_binding_shown(id);
-    if (panel.entry != plugin_binding_entry(id)) return nullptr;
+    if (panel.entry != plugin_binding_entry(id) || plugin_binding_indexed(id)) return nullptr;
     if (shown >= plugin_screen_slot) {
         if (!panel.screen || shown - plugin_screen_slot >= 3) return nullptr;
         const auto& card = panel.params[shown - plugin_screen_slot];

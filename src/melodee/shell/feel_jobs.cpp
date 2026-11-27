@@ -6,6 +6,7 @@
 // it back. A groove is taken from another pattern's notes when picked (a copy:
 // that pattern may change after).
 #include "melodee/shell/context.h"
+#include "melodee/model/step_order.h"
 #include <algorithm>
 
 namespace melodee {
@@ -45,6 +46,28 @@ void Context::set_speed(unsigned t, int speed) {
     send({Command::Type::TrackSpeed, uint8_t(t), 0, 0, int16_t(s)});
     for (unsigned p = 0; p < pattern_count; ++p) sync_pattern(t, p);
     notice("Track " + std::to_string(t + 1) + " " + speed_name(s));
+}
+
+// A track's direction: its patterns' steps forward, backward, or each pass shuffled; the notes stay as written. An
+// audio track's take plays forward.
+void Context::set_direction(unsigned t, unsigned direction) {
+    t %= track_count;
+    auto& tr = project.tracks[t];
+    if (!tr.used() || tr.is_audio()) return;
+    const auto d = direction_of(direction);
+    if (tr.direction == uint8_t(d)) return;
+    tr.direction = uint8_t(d);
+    dirty = true;
+    send({Command::Type::TrackDirection, uint8_t(t), 0, 0, int16_t(d)});
+    notice("Track " + std::to_string(t + 1) + " " + direction_name(d));
+}
+
+void Context::cycle_direction() {
+    const auto& tr = track();
+    if (!tr.used()) return;
+    if (tr.is_audio()) { notice("An audio track plays forward"); return; }
+    if (frozen_edit(ui.track)) return; // a frozen track's prints hold how it played: "Unfreeze track N?" first
+    set_direction(ui.track, (tr.direction + 1u) % unsigned(PlayDirection::Count));
 }
 
 } // namespace melodee

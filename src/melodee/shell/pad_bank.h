@@ -5,7 +5,7 @@
 
 // Pad Bank (MELODEE_PARITY.md, phase 1c). A tap steps the selected kit to
 // its next bank, A-H round (Shift: the previous one; on Punch the other bank
-// of punches; on Chop the next sixteen slices); with Seq held, the bank of patterns the pads launch. Held: a pad picks that track, Minus / Plus or the wheel jump
+// of punches; on Chop the next sixteen slices; on the mixer its other row, shell/mixer_channels.h); with Seq held, the bank of patterns the pads launch. Held: a pad picks that track, Minus / Plus or the wheel jump
 // banks (the screen stays the page's: Pad FX + Knob FX shows the tracks); B2 MOVE moves a whole track to another pad, B3 COPY (or Shift + Erase, as printed)
 // copies one, Erase + pad clears one (shell/track_copy.cpp). One job a tap, acted on release: no
 // double tap. MIDI thread. (The Tracks page itself: Pad FX + Knob FX, shell/mix_hub.h.)

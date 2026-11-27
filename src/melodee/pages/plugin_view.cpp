@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// A plug-in over the cards (docs/MELODEE.md, Plug-ins), for Edit on a PLUGIN
-// track: its name, then while it opens the plug glyph, if it could not the
+// A plug-in over the cards (docs/MELODEE.md, Plug-ins), for Stage's EDIT on a
+// PLUGIN track: its name, then while it opens the plug glyph, if it could not the
 // broken plug and why in two words, if its 32-bit bridge died STOPPED; once
 // open, its parameters as a list, each name on one full line with its
 // number: the three on K1-K3 raised and ticked in their colours (their values
 // on the cards), the row before (or after) with its values; the wheel or
 // Minus / Plus move the rows. The share of each block it takes is the
-// header's (pages/edit_page.cpp).
+// header's (pages/stage_page.cpp).
 #include "melodee/pages/common.h"
 #include "melodee/pages/sampler_common.h"
 #include "melodee/plugin/plugin_pages.h"

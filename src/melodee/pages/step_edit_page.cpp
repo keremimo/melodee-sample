@@ -29,7 +29,10 @@
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/ui/widgets.h"
+#include "melodee/ui/waveform.h"
+#include "melodee/pages/sampler_common.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -70,7 +73,22 @@ juce::String held_name(const Snapshot& s, unsigned pad) {
     return name;
 }
 
-const char* const card_names[] {"NOTE", "LOCK", "TRIG", "EUCLID"};
+// A note's bar, its ends showing step PLAY: pointed back (REV), forward (FWD), both (RND); square as the pad plays.
+void note_bar(Paint& p, float x, float y, float w, float h, juce::Colour ink, StepPlay play) {
+    if (play == StepPlay::Pad) { p.fill(x, y, w, h, ink, 2); return; }
+    const float tip = std::min(3.5f, w / 3);
+    const bool back = play != StepPlay::Forward, on = play != StepPlay::Reverse;
+    juce::Path bar;
+    bar.startNewSubPath(x + (back ? tip : 0), y);
+    bar.lineTo(x + w - (on ? tip : 0), y);
+    if (on) bar.lineTo(x + w, y + h / 2); else { bar.lineTo(x + w, y); bar.lineTo(x + w, y + h); }
+    bar.lineTo(x + w - (on ? tip : 0), y + h);
+    bar.lineTo(x + (back ? tip : 0), y + h);
+    if (back) bar.lineTo(x, y + h / 2); else { bar.lineTo(x, y + h); bar.lineTo(x, y); }
+    bar.closeSubPath();
+    p.g.setColour(ink);
+    p.g.fillPath(bar);
+}
 
 unsigned bars_of(const Pattern& p) { return std::max(1u, (p.steps() + bar_steps - 1) / bar_steps); }
 
@@ -140,7 +158,8 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
             unsigned hits = e.hits();
             if (hits == 1) {
                 float bh = 4 + 6 * e.velocity / 127.0f;
-                p.fill(x + 1.5f, cy - bh / 2, colw - 3, bh, ink_note, 2);
+                note_bar(p, x + 1.5f, cy - bh / 2, colw - 3, bh, ink_note, step_play(e.flags)); // its ends: step PLAY
+                if (e.sample) p.ring(x + 0.5f, cy - bh / 2 - 1, colw - 1, bh + 2, colour::text.withAlpha(0.85f), 2.5f, 1.2f); // a sample of its own
                 continue;
             }
             float gap = 0.75f, hw = (colw - 3 - gap * (hits - 1)) / hits; // a ratchet: its hits side by side
@@ -185,9 +204,144 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
     }
 }
 
+// Step Edit's SOUND panel: where the step's sound comes from (its track's tag, the pad and the sample), its way, and
+// the whole sample with the step's slice lit.
+void draw_sound_panel(Paint& p, const Snapshot& s, juce::Colour c, float px, float py, float pw, float ph) {
+    const auto& t = s.track();
+    const int n = lane_event(s.pattern, sound_step(s.ui, s.pattern), steps_lane(t));
+    const float cy = py + ph / 2;
+    if (n < 0) { p.text("Rest", px + 10, cy - 9, 80, 18, plain(colour::dim, type::body)); return; }
+    const auto& e = s.pattern.events[size_t(n)];
+    const auto choices = step_sound_choices(s.project);
+    const int k = step_sound_index(choices, e.sample);
+    juce::String name, tag = juce::String(s.ui.track + 1);
+    juce::Colour from = c;
+    unsigned slot = no_sample;
+    if (k > 0) {
+        const auto& choice = choices[size_t(k - 1)];
+        char label[4];
+        pad_label(choice.pad, label);
+        name = juce::String(label) + " " + juce::String::fromUTF8(s.project.samples[choice.slot].name);
+        tag = juce::String(choice.track + 1); from = track_colour(choice.track); slot = choice.slot;
+    } else if (e.sample) { // a sample no pad holds now
+        slot = e.sample - 1u;
+        name = juce::String::fromUTF8(s.project.samples[slot % sample_slots].name);
+    } else {
+        name = key_name(s, e.key, true);
+        if (t.engine == EngineKind::Keygroup) slot = t.pads[0].sample;
+        else if (e.key >= sampler_first_note) slot = t.pads[(e.key - sampler_first_note) % sampler_pads].sample;
+    }
+    float x = px + 8;
+    p.fill(x, cy - 9, 16, 18, from, 3);
+    p.text(tag, x, cy - 9, 16, 18, plain(colour::bg, type::small, Weight::Bold), juce::Justification::centred);
+    x += 22;
+    auto style = plain(colour::text, type::body, Weight::SemiBold);
+    const float most = pw * 0.46f - 44;
+    const float nw = std::min(p.width(name, style), most);
+    p.text(name, x, cy - 9, nw, 18, p.fit(name, style, most, type::floor));
+    x += nw + 6;
+    switch (step_play(e.flags)) { // its way, when not the pad's
+    case StepPlay::Reverse: icon(p, Icon::ArrowLeft, x, cy - 6, 12, colour::sec, 1.6f); break;
+    case StepPlay::Forward: icon(p, Icon::ArrowRight, x, cy - 6, 12, colour::sec, 1.6f); break;
+    case StepPlay::Random: icon(p, Icon::Dice, x, cy - 6, 12, colour::sec, 1.4f); break;
+    default: break;
+    }
+    // The sample, whole: its slices' edges, the step's slice lit (RND: all of them).
+    const float wx = px + pw * 0.5f, ww = px + pw - 8 - wx, wy = py + 5, wh = ph - 10;
+    p.fill(wx, wy, ww, wh, colour::bg, 3);
+    if (!s.step_wave_shown || slot >= sample_slots) return;
+    const uint32_t frames = std::max<uint32_t>(s.project.samples[slot].frames, 1);
+    const auto& chop = s.project.chops[slot].slices;
+    float lit_from = 0, lit_to = 1;
+    if (e.slice && e.slice != slice_random && e.slice <= chop.count) {
+        lit_from = float(chop.start[e.slice - 1u]) / frames;
+        lit_to = float(chop.end(e.slice - 1u, frames)) / frames;
+    }
+    const auto& wave = s.step_wave;
+    const float bw = ww / float(wave.size());
+    for (unsigned k2 = 0; k2 < wave.size(); ++k2) {
+        const float at = (k2 + 0.5f) / float(wave.size()), bh = std::max(1.0f, wave[k2] / 255.0f * (wh - 4));
+        p.fill(wx + k2 * bw, wy + (wh - bh) / 2, std::max(1.0f, bw - 0.4f), bh, at >= lit_from && at < lit_to ? c : colour::line, 0.5f);
+    }
+    for (unsigned k2 = 1; k2 < chop.count; ++k2) p.fill(wx + ww * float(chop.start[k2]) / frames, wy, 1, wh, colour::dim, 0);
+}
+
+// Step SOUND's sounds on the pads (SAMPLE SELECT with a step held): the shown track's bank as the pads sit, each its
+// waveform and name, the one the step plays lit; on SLICES the step's sample with its slices numbered.
+void draw_sounds(Paint& p, const Snapshot& s, juce::Colour c) {
+    const auto& ui = s.ui;
+    const auto& t = s.track();
+    const unsigned st = sound_step(ui, s.pattern);
+    const int n = lane_event(s.pattern, st, steps_lane(t));
+    const auto& source = s.project.tracks[ui.sounds_track % track_count];
+    Header h = header_of(s);
+    h.left.push_back(chip("STEP " + juce::String(st + 1), colour::amber));
+    const unsigned bank = ui.sounds_bank % sampler_banks;
+    h.left.push_back(pill("BANK " + juce::String::charToString(juce::juce_wchar('A' + bank))));
+    h.right.push_back(tag_of(s, ui.sounds_slices ? ui.track : ui.sounds_track % track_count));
+    SoftKeys keys {{"CLEAR", "SLICES", ""}, -1, c};
+    keys.toggles = 2; keys.lit = ui.sounds_slices ? 2 : 0;
+    frame(p, s, keys, h);
+    if (n < 0) return;
+    const auto& e = s.pattern.events[size_t(n)];
+    uint16_t plays = e.sample;
+    if (!plays && t.engine == EngineKind::Sampler && e.key >= sampler_first_note) plays = uint16_t(t.pads[(e.key - sampler_first_note) % sampler_pads].sample + 1);
+    if (!plays && t.engine == EngineKind::Keygroup) plays = uint16_t(t.pads[0].sample + 1);
+    if (ui.sounds_slices) { // the step's sample, its slices numbered (sixteen at a time: Pad Bank)
+        const unsigned slot = plays ? plays - 1u : no_sample;
+        if (slot >= sample_slots) return;
+        const uint32_t frames = std::max<uint32_t>(s.project.samples[slot].frames, 1);
+        const auto& chop = s.project.chops[slot].slices;
+        const float x = zone::pad, y = zone::picture_y + 8, w = zone::width - 2 * zone::pad, hgt = zone::picture_h - 34;
+        p.fill(x, y, w, hgt, colour::panel, 4);
+        float from = 0, to = 0;
+        if (e.slice && e.slice != slice_random && e.slice <= chop.count) { from = float(chop.start[e.slice - 1u]) / frames; to = float(chop.end(e.slice - 1u, frames)) / frames; }
+        if (s.sample.frames) waveform(p, x + 2, y + 2, w - 4, hgt - 4, s.sample.overview, 0, 1, from, to, c);
+        for (unsigned k = 0; k < chop.count; ++k) {
+            const float sx = x + w * float(chop.start[k]) / frames, ex = x + w * float(chop.end(k, frames)) / frames;
+            if (k) p.fill(sx, y, 1, hgt, colour::dim, 0);
+            if (k / 16 != bank) continue;
+            const bool lit = e.slice == k + 1;
+            p.text(juce::String(k + 1), sx, y + hgt + 2, std::max(ex - sx, 12.0f), 13, plain(lit ? colour::amber : colour::mid, type::small, lit ? Weight::Bold : Weight::Medium),
+                   juce::Justification::centred);
+        }
+        return;
+    }
+    constexpr float gap = 4, top = zone::picture_y + 4, grid_w = zone::width - 2 * zone::pad;
+    constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 8 - 3 * gap) / 4;
+    for (unsigned k = 0; k < 16; ++k) {
+        const unsigned kit = bank * 16 + k, row = 3 - k / 4, column = k % 4;
+        const float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
+        const bool keygroup = source.engine == EngineKind::Keygroup;
+        const auto& sound = source.pads[keygroup ? 0 : kit % sampler_pads];
+        const bool used = sound.used() && (!keygroup || kit == 0);
+        const bool picked = used && sound.sample + 1u == plays;
+        const auto pc = sound.colour ? juce::Colour(0xff000000u | full_colour(sound.colour)) : track_colour(ui.sounds_track % track_count);
+        p.fill(x, y, w, ch, picked ? pc : used ? colour::surf : colour::quiet, 3);
+        if (!used) continue;
+        const float wx = x + 5, wy = y + 4, ww = w - 10, wh = ch - 19;
+        if (s.pad_waves_shown & (1u << k)) {
+            const auto& wave = s.pad_waves[k];
+            const float bw = ww / float(wave.size());
+            const auto ink = picked ? ink_on(pc).withAlpha(0.9f) : pc.withAlpha(0.75f);
+            for (unsigned b = 0; b < wave.size(); ++b) {
+                const float bh = std::max(1.0f, wave[b] / 255.0f * wh);
+                p.fill(wx + b * bw, wy + (wh - bh) / 2, std::max(1.0f, bw - 0.6f), bh, ink, 0.5f);
+            }
+        }
+        const auto name = juce::String::fromUTF8(s.project.samples[sound.sample % sample_slots].name);
+        auto style = plain(picked ? ink_on(pc) : colour::text, type::small, Weight::SemiBold);
+        p.text(name, x + 5, y + ch - 15, w - 10, 13, p.fit(name, style, w - 10, type::floor));
+        if (s.project.chops[sound.sample % sample_slots].slices.count > 1) // chopped: its slices (B2 SLICES)
+            icon(p, Icon::Scissors, x + w - 13, y + 3, 9, picked ? ink_on(pc) : colour::sec, 1.3f);
+    }
+}
+
 void draw(Paint& p, const Snapshot& s) {
     const auto& pattern = s.pattern;
     auto c = colour_of(s);
+    if (sounds_open(s.ui)) { draw_sounds(p, s, c); return; }
+    const unsigned set = step_set(s.track(), s.ui.step_cards);
     unsigned q = pattern.q(), caret = edit_caret(s.ui, pattern);
     bool spare = in_spare(s.ui, pattern);
     int lane = steps_lane(s.track());
@@ -199,20 +353,21 @@ void draw(Paint& p, const Snapshot& s) {
         int key = lane >= 0 ? lane : int(s.track().step_note());
         where = (spare ? bar_name : juce::String("STEPS")) + juce::String::fromUTF8(" \xc2\xb7 ") + key_name(s, key, true);
     }
-    if (s.ui.held_step >= 0) where += juce::String::fromUTF8(" \xc2\xb7 LOCK"); // held: the pots lock it
+    if (s.ui.held_step >= 0) where += juce::String::fromUTF8(set == cards_sound ? " \xc2\xb7 SOUND" : " \xc2\xb7 LOCK"); // held: the pots lock it (SOUND: set its sound)
     h.left.push_back(edit_pattern_chip(s));
     h.left.push_back(chip(where, colour::amber));
-    if (s.ui.step_cards == 3 && lane >= 0) // the EUCLID row: the lane's rhythm, E(hits, steps)
+    if (set == cards_euclid && lane >= 0) // the EUCLID row: the lane's rhythm, E(hits, steps)
         if (const EuclidLane* e = euclid_of(pattern, unsigned(lane)))
             h.left.push_back(pill("E(" + juce::String(e->hits) + "," + juce::String(e->steps) + ")"));
     if (lane >= 0 && pattern.own_lane(unsigned(lane))) // its lane loops on its own
         h.left.push_back(pill("LANE " + juce::String((pattern.lane_length(unsigned(lane)) + q - 1) / q)));
     h.right.push_back(tag_of(s, s.ui.track));
-    unsigned sets = lane >= 0 ? 4 : 3, set = s.ui.step_cards % sets;
-    SoftKeys keys {{card_names[set], "REST", "BACKSPACE"}, -1, c}; // Shift + Seq (or Seq, or Push) closes (T-a)
+    std::array<uint8_t, cards_count> card_sets {};
+    const unsigned sets = step_card_sets(s.track(), card_sets);
+    SoftKeys keys {{step_cards_name(set), "REST", "BACKSPACE"}, -1, c}; // Shift + Seq (or Seq, or Push) closes (T-a)
     keys.glyphs = {Icon::None, Icon::ArrowRight, Icon::Trash};
     keys.tints[0] = c; keys.tints[2] = colour::rec;
-    keys.dots[0] = uint8_t(sets); keys.dot_at[0] = uint8_t(set);
+    keys.dots[0] = uint8_t(sets); keys.dot_at[0] = uint8_t(step_set_place(s.track(), s.ui.step_cards));
     if (s.ui.shift) { // PADS (STEPS lit), TIE, INSERT
         keys = SoftKeys {{"PADS", "TIE", "INSERT"}, -1, c};
         keys.toggles = 1; keys.lit = s.ui.step_pads ? 1 : 0;
@@ -224,6 +379,7 @@ void draw(Paint& p, const Snapshot& s) {
     // The panel: the pads held (bright), else what the caret's step holds (quiet); and where the caret goes next.
     float py = zone::picture_y + 103, ph = zone::knobs_y - 4 - py, px = zone::pad, pw = zone::width - 2 * zone::pad;
     p.fill(px, py, pw, ph, colour::panel, 4);
+    if (set == cards_sound) { draw_sound_panel(p, s, c, px, py, pw, ph); return; } // SOUND: the step's sound
     std::vector<juce::String> keys_shown;
     bool held = s.ui.entry_held != 0;
     auto add = [&](const juce::String& name) {
@@ -392,6 +548,7 @@ void insert(Context& c) {
 }
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
+    if (sounds_open(c.ui)) { if (down) sounds_pad(c, pad); return; } // the sounds on the pads
     if (c.ui.step_pads) { steps_pad(c, pad, velocity, down); return; }
     int key = pad_key(c.project, c.track(), pad);
     if (down && c.ui.erase) { // Erase + pad: all of that pad's events, once B3 says so
@@ -402,13 +559,17 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
 }
 
 void wheel(Context& c, int delta) {
+    if (sounds_open(c.ui)) { sounds_walk(c, delta); return; } // the next sound of them all
     if (c.ui.step_pads && held_wheel(c, delta)) return;
     if (seq_following(c)) return; // Settings > SEQ > Follow has the caret while it plays
     entry_move(c, delta);
 }
 
 // Back to the page Step Edit sits over (Patterns, Roll or Motion: the track's last).
-void push(Context& c) { c.open(seq_editor_page(c.ui)); }
+void push(Context& c) {
+    if (sounds_open(c.ui)) { sounds_close(c); return; } // the sounds on the pads close
+    c.open(seq_editor_page(c.ui));
+}
 
 void soft(Context& c, int key) {
     auto& ui = c.ui;
@@ -419,9 +580,13 @@ void soft(Context& c, int key) {
         if (key == 2) insert(c);
         return;
     }
-    if (key == 0) { // the next card set: NOTE, LOCK, TRIG, EUCLID (a kit or Drums lane)
-        unsigned sets = steps_lane(c.track()) >= 0 ? 4 : 3;
-        ui.step_cards = uint8_t((ui.step_cards % sets + 1) % sets);
+    if (sounds_open(ui)) { // the sounds on the pads: B1 CLEAR, B2 SLICES
+        if (key == 0) sounds_clear(c);
+        if (key == 1) sounds_slices(c);
+        return;
+    }
+    if (key == 0) { // the next card set: NOTE, LOCK, TRIG, SOUND (a kit or keygroup), EUCLID (a kit or Drums lane)
+        ui.step_cards = uint8_t(next_step_set(c.track(), ui.step_cards));
         return;
     }
     if (key == 1) entry_rest(c);
@@ -430,6 +595,7 @@ void soft(Context& c, int key) {
 
 // Minus / Plus: the octave the pads play (a kit's bank).
 void nudge(Context& c, int way) {
+    if (sounds_open(c.ui)) { sounds_track_step(c, way); return; } // the sounds of the next track
     auto& t = c.track();
     if (t.engine == EngineKind::Sampler) t.bank = uint8_t((t.bank + sampler_banks + way) % sampler_banks);
     else octave(c, way);

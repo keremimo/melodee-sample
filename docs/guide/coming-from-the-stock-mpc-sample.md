@@ -64,7 +64,7 @@ stock app's pages plus tracks, plug-ins, the mixer and Song (see
 | **SHIFT** + **SEQ RECORD** brings the last loop into the sequence. | **SHIFT** + **SEQ RECORD** (Recall) puts the last phrase you played on every track into each track's next empty pattern. |
 | **SAMPLE RECORD** records a sample. | On a kit, the same. On a keygroup, plug-in or MIDI track, **SAMPLE RECORD** opens the **PRINT** sheet, which freezes the track to audio (see [Freeze a track](tracks.md#freeze-a-track)). On an audio track it opens the track's **INPUT**. |
 | No looper. | Press **LOOP** and **16 LEVELS** together to open the **Looper** (in Full). |
-| No mixer. | Press **PAD FX** and **KNOB FX** together to open the mixer: **Tracks**, **Sends** and the effect chains. |
+| No mixer. | Press **PAD FX** and **KNOB FX** together to open the [mixer](mixer-and-effects.md#the-mixer): every track, submix, bus, the input and the master, with sends, effects, EQ and a compressor. |
 | Power off with **POWER**. | A short press of **POWER** opens the Exit screen: stay, power off, or go back to the stock app. |
 
 ![Stage on a kit: AMP ENV, as in Sample mode](../images/screens/stagekitampenv.png)

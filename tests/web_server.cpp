@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include "melodee/web/web_server.h"
+#include <algorithm>
 #include <cstring>
 #include <vector>
 #include <arpa/inet.h>
@@ -93,6 +94,29 @@ int main() {
     a[2] = 0x84;
     check(mdns_answer(a.data(), a.size(), mdns_name, address, false).empty(), "mDNS ignores responses");
     check(mdns_answer(a.data(), 5, mdns_name, address, false).empty(), "mDNS ignores a cut packet");
+    // File sharing's SMB server by name (DNS-SD): only while offered; the type's PTR with SRV, TXT and A beside it.
+    auto browse = query("_smb._tcp.local", 12, 0);
+    check(mdns_answer(browse.data(), browse.size(), mdns_name, address, false).empty(), "mDNS offers no SMB server while File sharing is off");
+    auto smb = mdns_answer(browse.data(), browse.size(), mdns_name, address, false, true);
+    auto has = [](const std::vector<uint8_t>& packet, const char* text) {
+        std::string label = text;
+        return std::search(packet.begin(), packet.end(), label.begin(), label.end()) != packet.end();
+    };
+    check(smb.size() > 12 && smb[7] == 1 && smb[11] == 3 && has(smb, "Melodee") && has(smb, "_smb")
+          && std::memcmp(smb.data() + smb.size() - 4, &address, 4) == 0, "mDNS answers _smb._tcp: Melodee, SRV, TXT and the address");
+    const uint8_t port445[] = {0, 0, 0, 0, 0x01, 0xbd}; // SRV: priority, weight, port 445
+    check(std::search(smb.begin(), smb.end(), port445, port445 + 6) != smb.end(), "mDNS SRV names port 445");
+    auto srv = query("melodee._smb._tcp.local", 33, 0);
+    auto srv_reply = mdns_answer(srv.data(), srv.size(), mdns_name, address, false, true);
+    check(srv_reply.size() > 12 && srv_reply[7] == 1 && srv_reply[11] == 1, "mDNS answers the SRV, with the address beside it");
+    auto types = query("_services._dns-sd._udp.local", 12, 0);
+    auto types_reply = mdns_answer(types.data(), types.size(), mdns_name, address, false, true);
+    check(types_reply.size() > 12 && types_reply[7] == 1 && has(types_reply, "_smb"), "mDNS lists _smb._tcp among its types");
+    auto hello = mdns_announce(mdns_name, address, true), bye = mdns_announce(mdns_name, address, false, true);
+    const uint8_t a_record_head[] = {5, 'l', 'o', 'c', 'a', 'l', 0, 0, 1, 0x80, 1}; // melodee.local A, cache flush
+    check(hello[7] == 5 && has(hello, "_services") && std::search(hello.begin(), hello.end(), a_record_head, a_record_head + 11) != hello.end()
+          && bye[7] == 3 && std::search(bye.begin(), bye.end(), a_record_head, a_record_head + 11) == bye.end(),
+          "mDNS announces the SMB server with the address, and says goodbye without it");
     check(safe_name("Melodee-MPC-Sample-v0.3.0.zip", ".zip") == "Melodee-MPC-Sample-v0.3.0.zip", "safe_name keeps a name");
     check(safe_name("Poly.ZIP", ".zip") == "Poly.ZIP", "safe_name any case");
     check(safe_name("../autorun.zip", ".zip").empty() && safe_name("a/b.zip", ".zip").empty()

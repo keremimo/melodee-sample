@@ -25,7 +25,7 @@ struct PlaceBar {
     unsigned count = 1;
     uint32_t position = 0; // ticks from the start of the first segment
     uint32_t notch = 0;    // ticks between the notches inside the segment it is in (0: none)
-    uint32_t beat = 96;    // ticks a beat: the leading edge ticks on each
+    uint32_t beat = ticks_per_quarter; // ticks a beat: the leading edge ticks on each
     bool held = false;     // not moving: no fill pulse, a still edge
     unsigned blocks = 0, blocks_left = 0; // Count-In: a block a beat, the ones still to come
     uint32_t total() const { uint32_t t = 0; for (unsigned n = 0; n < count; ++n) t += segments[n]; return t; }

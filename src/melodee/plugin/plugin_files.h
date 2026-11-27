@@ -4,6 +4,7 @@
 #include "melodee/plugin/drum_map.h"
 #include "melodee/plugin/plugin_pages.h"
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -16,8 +17,11 @@
 // - a VST3 bundle (Name.vst3/, its library in Contents/aarch64-linux);
 // - an LV2 bundle (Name.lv2/, its manifest.ttl beside its library);
 // - a CLAP library (Name.clap, a shared library on Linux);
-// - an Open MPC plug-in folder (open-mpc.github.io: plugin-meta.xml beside a
-//   VST2 .so, its Q-Link pages in Plugin Skins/Q-Links.json);
+// - an MPC plug-in folder ("Maker - VST - Name/"): Akai's plugin.json naming
+//   its VST2 builds (the MPC plug-in SDK's folder, MPC OS 3.10.1 and MPC
+//   Sample 1.4 read it from VST2 Plugins), or an Open MPC folder
+//   (open-mpc.github.io: plugin-meta.xml beside a VST2 .so); either has its
+//   Q-Link pages in Plugin Skins/Q-Links.json;
 // - a VST2 library (.so) on its own.
 //
 // Only builds for this MPC can load: aarch64 Linux, or a 32-bit ARM (armv7)
@@ -29,14 +33,14 @@ enum class PluginFormat : uint8_t { Vst3, Vst2, Vst2Arm32, Clap, Lv2 };
 const char* format_tag(PluginFormat format); // "VST3", "VST2", "ARMV7", "CLAP", "LV2"
 
 struct PluginFile {
-    std::string path;          // the bundle, the Open MPC folder, the .clap or the .so
+    std::string path;          // the bundle, the MPC plug-in folder, the .clap or the .so
     std::string name;          // as listed: the plug-in's own name, else the file's
     bool folder = false;       // a plain folder to open
     PluginFormat format = PluginFormat::Vst3;
     std::string library;       // the shared library inside (absolute), empty when there is none for this MPC
     std::string why;           // why it cannot load here ("Windows and Mac builds only"); empty when it can
     int8_t instrument = -1;    // 1 instrument, 0 effect, -1 not known until it is opened once
-    // The rate it runs at whatever it is opened at, 0 none: an Open MPC plug-in, written to MPC OS's 44.1 kHz
+    // The rate it runs at whatever it is opened at, 0 none: an MPC plug-in folder, written to MPC OS's 44.1 kHz
     // (plugin/rate_bridge.h converts it to the device's)
     unsigned fixed_rate = 0;
     // A bundle holding several plug-ins (LSP's VST3 or LV2, a CLAP collection) lists as one row with how many;
@@ -215,6 +219,57 @@ inline std::vector<PluginPage> named_qlink_pages(const std::vector<QLinkPage>& p
         }
         out.push_back({name, q.params});
     }
+    return out;
+}
+
+// A path plugin.json gives, as a path inside the plug-in's folder ("x-arm64.so", "VST/x-arm64.so"; a backslash read
+// as a slash). Empty when it is empty or leads out of the folder (absolute, a drive, or "..").
+inline std::string folder_path_in(std::string path) {
+    std::replace(path.begin(), path.end(), '\\', '/');
+    if (path.empty() || path[0] == '/' || path.find(':') != std::string::npos) return {};
+    for (size_t from = 0; from <= path.size();) {
+        size_t end = std::min(path.find('/', from), path.size());
+        if (path.compare(from, end - from, "..") == 0) return {};
+        from = end + 1;
+    }
+    return path;
+}
+
+// Akai's plugin.json, as an MPC plug-in folder has it: the plug-in's name, whether it is an instrument
+// ("isInstrument", else "kind" "instrument" or "effect"; -1 not said) and its libraries by build, each inside the
+// folder (folder_path_in(); empty: not given). Empty when it is not a JSON object. Plain C++, no JUCE: the host tests
+// read it too.
+struct PluginJson {
+    std::string name;
+    int8_t instrument = -1;
+    std::string file64; // the aarch64 build
+    std::string file32; // the armv7 build
+    std::string file;   // a build not said which
+};
+inline PluginJson plugin_json_in(std::string_view json) {
+    PluginJson out;
+    std::string kind;
+    int8_t flag = -1;
+    drum_map_detail::Reader r {json};
+    auto text = [&](std::string& to) { return r.peek('"') ? r.string(&to) : r.skip(); };
+    bool ok = r.object([&](const std::string& key) {
+        if (key == "name") return text(out.name);
+        if (key == "kind") return text(kind);
+        if (key == "file64") return text(out.file64);
+        if (key == "file32") return text(out.file32);
+        if (key == "file") return text(out.file);
+        if (key != "isInstrument") return r.skip();
+        long number = 0;
+        if (r.word("true")) flag = 1;
+        else if (r.word("false")) flag = 0;
+        else if (r.number(&number)) flag = number != 0;
+        else return r.skip();
+        return true;
+    });
+    if (!ok) return {};
+    for (auto& c : kind) c = char(std::tolower(static_cast<unsigned char>(c)));
+    out.instrument = flag >= 0 ? flag : kind == "instrument" ? 1 : kind == "effect" ? 0 : -1;
+    for (auto* file : {&out.file64, &out.file32, &out.file}) *file = folder_path_in(*file);
     return out;
 }
 

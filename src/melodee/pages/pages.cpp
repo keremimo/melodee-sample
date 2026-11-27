@@ -21,7 +21,6 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Song: return song_page;
     case PageId::InputConfig: return input_config_page;
     case PageId::Rack: return rack_page;
-    case PageId::Sends: return sends_page;
     case PageId::Bus: return bus_page;
     case PageId::Master: return master_page;
     case PageId::Pads: return pads_page;
@@ -55,11 +54,11 @@ const PageSpec& page_spec(PageId page) {
     case PageId::PluginPresets: return plugin_presets_page;
     case PageId::MidiConfig: return midi_config_page;
     case PageId::CardAccess: return card_access_page;
-    case PageId::Tracks: return tracks_page;
     case PageId::Looper: return looper_page;
     case PageId::Print: return print_page; // freeze plan F2c
     case PageId::AutoSample: return auto_sample_page;
     case PageId::Stems: return stems_page;
+    case PageId::Mixer: case PageId::Tracks: case PageId::Sends: return mixer_page; // the last two gone with it (step 6)
     case PageId::Trim: // lives on Stage now (Context::open lands there)
     case PageId::Stage:
     default: return stage_page;

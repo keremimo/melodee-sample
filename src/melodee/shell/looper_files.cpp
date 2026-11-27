@@ -57,7 +57,7 @@ void commit_loop(Context& c, unsigned loop, bool note) {
             uint32_t want = std::min<uint32_t>((ticks + bar - 1) / bar * bar, c.project.max_length());
             if (p.length < want) p.length = want;
             Event e;
-            e.tick = 0; e.length = uint16_t(std::min<unsigned>(ticks, 65535)); e.key = uint8_t(sampler_first_note + unsigned(kit)); e.velocity = 100;
+            e.tick = 0; e.length = note_ticks(ticks); e.key = uint8_t(sampler_first_note + unsigned(kit)); e.velocity = 100;
             p.add(e);
             c.sync_pattern(c.ui.track, t.pattern);
         });

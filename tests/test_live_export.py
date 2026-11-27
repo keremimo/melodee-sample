@@ -94,7 +94,7 @@ class LiveExport(unittest.TestCase):
         self.assertEqual((value(snare, "SampleStart"), value(snare, "SampleEnd")), ("10", "40"))
         self.assertEqual(value(kick, "SampleRef/FileRef/RelativePath"), "Samples/Imported/Kick.wav")
         self.assertEqual(value(kick, "SampleRef/FileRef/RelativePathType"), "1")
-        # Each pattern a clip in the scene of its number, as long as the pattern (768 ticks: 8 beats).
+        # Each pattern a clip in the scene of its number, as long as the pattern (7680 ticks: 8 beats).
         self.assertEqual(len(slots(kit)), 2)
         a1, a2 = (s.find("ClipSlot/Value/MidiClip") for s in slots(kit))
         self.assertEqual((value(a1, "Name"), value(a2, "Name")), ("A1", "A2"))

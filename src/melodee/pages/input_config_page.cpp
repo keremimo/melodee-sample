@@ -4,7 +4,7 @@
 // Record and Audio Recall hear, as Akai's input_configuration page lists it.
 // K1 source (Mic, Rear, Rear L / R, Resample, USB, USB L / R, then each
 // track with a sound: shell/input_choices.h; Shift + K1 its tap), K2 rec length
-// (Free, Seq, Melodee's 1-16 bars), K3 threshold (-96 dB: at once; Shift +
+// (Free, Seq, 1-16 bars, then 24 to 128), K3 threshold (-96 dB: at once; Shift +
 // K3 Melodee's gain); B1 monitor (Off, Auto while Record is in view, On; its
 // LED amber on Auto, green on On), B2 Rec Input FX (LED). Record's cards are the same ones, so the two pages always agree. The
 // picture is the back panel: the sources as the sockets they are (the mic,

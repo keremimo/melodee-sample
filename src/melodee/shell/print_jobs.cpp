@@ -50,6 +50,9 @@ void Context::freeze(const PrintAsk& ask) {
     const auto& tr = project.tracks[t];
     if (project_path.empty()) { printer->note("save the project first: its prints go beside its file"); return; }
     if (!tr.used() || tr.engine == EngineKind::Midi) { printer->note("track " + std::to_string(t + 1) + " has no sound to freeze"); return; }
+    if (tr.engine == EngineKind::Sampler) // a print holds the kit, not pads sent to submixes
+        for (const auto& pad : tr.pads)
+            if (pad.used() && pad.out) { printer->note("track " + std::to_string(t + 1) + " has pads sent to submixes: set them to KIT to freeze it"); return; }
     TrackFreeze f;
     f.state = ask.deep ? FreezeState::Deep : FreezeState::Frozen;
     f.tap = ask.deep ? PrintTap::PostFx : ask.tap; // freeze plan F2d: the chain's plug-ins go too, so the print holds them

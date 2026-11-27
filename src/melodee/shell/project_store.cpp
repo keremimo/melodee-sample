@@ -144,6 +144,7 @@ void ProjectStore::start_export(Request& r) {
                 std::string text = "Ableton/" + name + " Project, " + std::to_string(report.tracks) + (report.tracks == 1 ? " track" : " tracks");
                 if (report.missing) text += ", " + std::to_string(report.missing) + " files missing";
                 if (report.skipped) text += ", " + std::to_string(report.skipped) + " sounds left out";
+                if (report.mixer) text += ", mixer settings left out"; // strips, submixes, bus mutes
                 note(text);
             }
         } else {
@@ -156,6 +157,7 @@ void ProjectStore::start_export(Request& r) {
                 if (report.skipped_tracks) text += ", " + std::to_string(report.skipped_tracks) + (report.skipped_tracks == 1 ? " track left out" : " tracks left out");
                 if (report.missing) text += ", " + std::to_string(report.missing) + " files missing";
                 if (!left && report.skipped_pads) text += ", " + std::to_string(report.skipped_pads) + " sounds left out";
+                if (report.mixer) text += ", mixer settings left out"; // strips, submixes, bus mutes
                 note(text);
             }
         }

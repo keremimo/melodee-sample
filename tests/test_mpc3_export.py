@@ -45,6 +45,28 @@ class Mpc3Export(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout, out
 
+    def test_submix_routes(self):
+        # The mixer: a track sent to a submix plays into MPC 3's (destination 1, the submix's index; 2 is Out 1/2), that
+        # submix gets its level, pan and mute on its bus track and in the mixer's list; a drum pad goes into its program
+        # (destination 0), as MPC 3's own kits' pads.
+        with tempfile.TemporaryDirectory() as folder:
+            _, out = self.export(folder, "O:0=3", "U:2=64,-20,1")
+            _, data = read(out / "Beat.xpj")
+            drums = [t for t in data["tracks"] if t["program"]["type"] == 0]
+            self.assertTrue(drums)
+            route = drums[0]["program"]["mixable"]["audioRoute"]
+            self.assertEqual((route["destination"], route["audioRouteSubIndex"]), (1, 2))
+            pads = drums[0]["program"]["drum"]["instruments"]
+            self.assertTrue(all(p["mixable"]["audioRoute"]["destination"] == 0 for p in pads))
+            bus = next(t for t in data["tracks"] if t["name"] == "Submix 3")
+            self.assertTrue(bus["mute"] and bus["program"]["mixable"]["mute"])
+            self.assertLess(bus["program"]["mixable"]["pan"], 0.5)
+            listed = data["mixer"]["submixes"][2]["mixable"]
+            self.assertEqual(listed["volume"], bus["program"]["mixable"]["volume"])
+            self.assertLess(listed["volume"], next(t for t in data["tracks"] if t["name"] == "Submix 1")["program"]["mixable"]["volume"])
+            other = next(t for t in data["tracks"] if t["name"] == "Submix 1")
+            self.assertEqual(other["program"]["mixable"]["audioRoute"]["destination"], 2)
+
     def test_wav_slices(self):
         # A file's chop goes into the copied WAV as the MPC keeps slices ("atem" and "slic"), its key kept, and reads
         # back as the same slices.
@@ -143,8 +165,8 @@ class Mpc3Export(unittest.TestCase):
         self.assertIn("name=Beat tracks=1 sequences=128 pads=2 notes=3 over_limit=0 missing=0 tempo=725 seq_tempo=1 signature=3/4", text)
         self.assertIn("pad A01 file=Kick start=10 end=90 level=100 pan=0 pitch=0 play=1 mono=1 group=2 filter=Off", text)
         self.assertIn("pad A02 file=Snare start=20 end=80 level=51 pan=0 pitch=0 play=0 mono=1 group=0 filter=LPF4 cutoff=50", text)
-        self.assertIn("pattern 0 1 length=768 notes=2 first=0:36:127", text)
-        self.assertIn("pattern 0 0 length=768 notes=1 first=0:37:127", text)
+        self.assertIn("pattern 0 1 length=7680 notes=2 first=0:36:127", text)
+        self.assertIn("pattern 0 0 length=7680 notes=1 first=0:37:127", text)
 
     def test_keygroup_instrument(self):
         # An SFZ of two key zones on the Snare's pad: a Keygroup track of its own, the pad's notes with it at
@@ -508,7 +530,7 @@ class Mpc3Export(unittest.TestCase):
         self.assertEqual(sum(length for _, length in times), sequence["lengthPulses"])
 
     def test_song(self):
-        # The song as one sequence "Song" in the first free pattern number (2): pattern 1 (two notes in a 768-tick
+        # The song as one sequence "Song" in the first free pattern number (2): pattern 1 (two notes in a 7680-tick
         # pattern) at bar 0 for 4 bars of 3/4 plays twice and a little; a print's clip from bar 2; it plays first.
         with tempfile.TemporaryDirectory() as folder:
             prints = Path(folder) / "Song Prints"
@@ -532,11 +554,11 @@ class Mpc3Export(unittest.TestCase):
         # A one-bar pattern in a two-bar sequence plays twice, written out; every track as long as the sequence
         # (MPC 3's drum tracks were two bars of their own and looped them).
         with tempfile.TemporaryDirectory() as folder:
-            # Drum 001's pattern 1 cut to 384 ticks (its notes at 0 and 96 stay); the plug-in track's pattern 1 is 768
+            # Drum 001's pattern 1 cut to 3840 ticks (its notes at 0 and 960 stay); the plug-in track's pattern 1 is 7680
             prints = Path(folder) / "Song Prints"
             prints.mkdir()
             float_wav(prints / "T02 A2.wav", 44100, 2, 100)
-            _, out = self.export(folder, "L:0.1=384", f"1@1={prints}/T02 A2.wav", "L:1.1=768")
+            _, out = self.export(folder, "L:0.1=3840", f"1@1={prints}/T02 A2.wav", "L:1.1=7680")
             _, data = read(out / "Beat.xpj")
         second = next(s["value"] for s in data["sequences"] if s["key"] == 1)
         self.assertEqual(second["lengthPulses"], 7680)

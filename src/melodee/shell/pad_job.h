@@ -23,7 +23,6 @@ inline const char* pad_job(const Project& project, const UiState& ui) {
     if (ui.seq_held) return sequences_lit(ui) ? "SEQUENCES" : "PATTERNS";       // Seq held: the track's patterns; with Shift held, the sequences
     if (ui.mute_mode()) return "";
     switch (ui.page) {
-    case PageId::Tracks: return "TRACKS";
     case PageId::Patterns: return "PATTERNS";
     case PageId::Scenes: return "SEQUENCES";
     case PageId::StepEdit: if (ui.step_pads) return "STEPS"; break;

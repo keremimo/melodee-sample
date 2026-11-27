@@ -5,7 +5,7 @@
 // it plays the whole region, and the red walks: the pad of the slice the next
 // tap makes blinks red, and tapped it cuts the region there (the other pads
 // wait; a lit one plays again from its slice, the cuts after it gone). After
-// pad 16 the pads turn to bank B and its pad 1 is red, up to D (64 slices).
+// pad 16 the pads turn to bank B and its pad 1 is red, up to H (128 slices).
 // Stopped short of the end, the red stays on the next pad: tapped, it plays
 // on from the last cut; played to the end, no red. A take is one undo step
 // (open_take / end_take). Each cut is pulled onto the strongest hit just before it,
@@ -29,12 +29,12 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     auto& sl = ui.slices;
     uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
     if (!frames || !sl.count) return;
-    // A slice's pad plays it at the kit pad's speed and pitch, as its pad will (Warp, Semi, Fine); a take as the file
-    // is, since the red walks the region by the clock.
-    auto audition = [&](uint32_t from, uint32_t to, bool as_pad = false) {
-        const int kit = as_pad ? chop_kit_pad() : -1;
-        Command a {Command::Type::Audition, ui.track, 0, uint16_t(kit + 1), int16_t(velocity)};
-        a.pad.sample = ui.chop_sample; a.pad.start = from; a.pad.end = to;
+    // A take plays as the file is, since the red walks the region by the clock. A slice's pad plays it through the
+    // kit pad (slice_hit), as its slice hits will; with no kit pad holding the sample, as the file is, its own Reverse
+    // kept.
+    auto audition = [&](uint32_t from, uint32_t to, bool reverse = false) {
+        Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(velocity)};
+        a.pad.sample = ui.chop_sample; a.pad.start = from; a.pad.end = to; a.pad.reverse = reverse;
         send(a);
     };
     const uint32_t region_end = sl.end(sl.count - 1, frames);
@@ -83,19 +83,12 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     }
     ui.chop_slice = uint8_t(slice);
     ui.chop_heard_at = 0; // the tap plays it
-    if (slice_hit(pad, slice, velocity)) return; // Seq Record running: through its pad, and written (issue 24)
-    audition(sl.start[slice], sl.end(slice, frames), true);
+    if (slice_hit(pad, slice, velocity)) return; // through its pad, all of it (Reverse, Loop, Note On ...); written under Seq Record
+    audition(sl.start[slice], sl.end(slice, frames), sl.reversed(slice));
 }
 
 // Issue 24: the kit pad that plays Chop's sample, the one chopped (the last pad) or else the first holding it.
-int Context::chop_kit_pad() const {
-    const auto& t = project.tracks[ui.track % track_count];
-    if (t.engine != EngineKind::Sampler || ui.chop_sample >= sample_slots) return -1;
-    const unsigned last = t.last_pad % sampler_pads;
-    if (t.pads[last].used() && t.pads[last].sample == ui.chop_sample) return int(last);
-    for (unsigned n = 0; n < sampler_pads; ++n) if (t.pads[n].used() && t.pads[n].sample == ui.chop_sample) return int(n);
-    return -1;
-}
+int Context::chop_kit_pad() const { return melodee::chop_kit_pad(project.tracks[ui.track % track_count], ui.chop_sample); }
 
 // A sample's chop as slice hits play it: Chop's slices while Chop holds the sample (they reach the project's chop only
 // when the region changes or the project is saved), else the project's.
@@ -104,8 +97,10 @@ const Slices& Context::live_chop(unsigned sample) const {
     return project.chops[sample].slices;
 }
 
+// A slice's pad on Chop: the kit pad's note over that slice (a slice hit), so it plays as the pad does with all the
+// pad has (Mono / Poly, mute group, Note On, Loop, envelopes, filter, Warp, FX) and the slice's own Reverse; with Seq
+// Record running it is written too (issue 24). False with no kit pad holding Chop's sample.
 bool Context::slice_hit(unsigned pad, unsigned slice, uint8_t velocity) {
-    if (!ui.recording || !host.playing()) return false;
     const int kit = chop_kit_pad();
     if (kit < 0) return false;
     sync_chops(); // the audio thread plays the slice as Chop shows it now
@@ -114,7 +109,7 @@ bool Context::slice_hit(unsigned pad, unsigned slice, uint8_t velocity) {
     c.micros = slice + 1;
     send(c);
     const int key = pad_note(int(sampler_first_note) + kit, 0, -1, int(slice));
-    record(key, velocity);
+    if (ui.recording && host.playing()) record(key, velocity);
     chop_held[pad % 16] = key;
     return true;
 }
@@ -124,7 +119,22 @@ void Context::slice_release(unsigned pad) {
     if (key < 0) return;
     chop_held[pad % 16] = -1;
     note(ui.track, key & 0xffff, 0); // the pad's note let go (a Note On pad stops)
-    record_release(key);
+    record_release(key); // its length, when it was written
+}
+
+// Shift + Loop on Chop: the slice in hand plays the other way round from its pad, or as the pad again (its own
+// Reverse, kept in the sample's WAV with the chop); one undo step. The other slices stay as they are.
+void Context::reverse_slice() {
+    auto& sl = ui.slices;
+    if (ui.chop_slice >= sl.count) return;
+    end_take();
+    const unsigned n = ui.chop_slice;
+    auto edit = scope_edit(UndoScope {UndoScope::Kind::Chop, uint8_t(ui.track % track_count), 0}, "Reverse slice");
+    sl.reverse[n] = !sl.reverse[n];
+    if (edit && finish_scope(*edit)) { edits.push(std::move(*edit)); dirty = true; }
+    sync_chops(); // the next hit plays it so
+    const bool heard = slice_heard_reversed(track(), ui.chop_sample, sl, n); // as it plays: the pad's Reverse turned round
+    notice("Slice " + std::to_string(n + 1) + (heard ? " Reverse on" : " Reverse off"));
 }
 
 // The chops that changed since they were last sent (Chop's own as it is edited), a few a pass: the audio thread swaps

@@ -17,7 +17,7 @@ struct Binding {
         None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance,
         ModSource, ModDest, ModAmount, // id: the route
         PatternSteps, Division, Swing, // Patterns: PatternSteps the length in sixteenths (Shift + K1, issue 27)
-        PatternLength, TimeSignature,  // Patterns: K1 1, 2, 4 .. 128 bars; Shift + K2 the project's signature
+        PatternLength, TimeSignature,  // Patterns: K1 1, 2, 3 .. 16, 24 .. 128 bars; Shift + K2 the project's signature
         TcShift, TcSwing,              // Time Correct (Division is its Q)
         SongZoom, SongPattern, SongLength, // Song; id: the clip under the cursor, or -1
         FxParam,                           // id: chain * 64 + slot * 8 + parameter
@@ -26,7 +26,7 @@ struct Binding {
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds (id: the slice)
         FileJump, PluginJump,              // Samples, the plug-in picker
-        RecThreshold, RecLength, RecGain,  // Record and Input Config (RecLength: 0 Free, 1 Seq, 2.. 1..16 bars)
+        RecThreshold, RecLength, RecGain,  // Record and Input Config (RecLength: 0 Free, 1 Seq, 2.. bars: rec_bars())
         ProjectJump, ProjectSort,          // Project
         Tempo, ClickLevel,                 // Tempo (Swing as on Length)
         Features,                          // Settings' K1: 0 Basic, 1 Full (shell/features.h)
@@ -66,6 +66,9 @@ struct Binding {
         // kit its lane's notes), Roll's note in focus; the pitch ramp a kit pad's (Shift + K2).
         StepRatchet, StepRamp, StepPitchRamp, EventRatchet, EventRamp, EventPitchRamp,
         StepCondition, EventCondition, // the TRIG row's K3: a trig condition (model/trig.h), 0..trig_count - 1
+        // Step Edit's SOUND row (kit, keygroup): the step's own sample (Elektron's sample lock; value 0 its pad's, n
+        // the nth of step_sound_choices(), id its Event::sample), slice (0 PAD, 1..id the chop's, id + 1 RND) and way.
+        StepSound, StepSlice, StepPlay,
         Lock, // a step held on Steps or a pad held on Roll's note in focus: a Motion lane (id) locked there (roadmap P1)
         LaneLength, // Steps on a kit, Shift + K1: the last pad's lane's own length in steps of Q (the pattern's: none)
         // Step Edit as step entry (round 2, step-edit2 C): what a pad writes at the caret, length in steps of Q,
@@ -79,7 +82,7 @@ struct Binding {
         // Generators (roadmap P1): Steps' EUCLID row on a kit (the last pad's lane: hits, steps, rotation) and the VARY
         // sheet's amount (percent).
         EuclidHits, EuclidSteps, EuclidRotate, VaryAmount,
-        TrackSpeed, // Tracks, Shift + K1: the strip in hand's playback speed (roadmap P1), id the track, an index of speeds
+        TrackSpeed, // Patterns, Shift + K3: the track's playback speed (roadmap P1), id the track, an index of speeds
         LoopSource, // the Looper's loop sheet, K1: the loop's source, an index into loop_sources() (shell/loop_sheet.h), id the loop
         // Pad layers (roadmap P3), the last pad hit: the layer in hand 0-3, its velocities, its tune and level over the
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).
@@ -126,6 +129,17 @@ struct Binding {
         SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
         JamFrom, JamTo, // JAMS on Song (shell/jam_jobs.cpp): the first and last bar of the picked jam to play or take
         PadMute, // issue 32, Motion's card of a kit pad's mute lane: pad id muted (1) or not, as Mute + pad
+        // The mixer (docs/MIXER_PLAN.md): one value of a strip, id = strip number << 8 | StripPart (model/strip.h); a
+        // track's output, id the track, 0 the master or out_sub(s); a submix's level, pan or send, id = submix << 8 |
+        // Command::SubPart (engine/command.h).
+        Strip, TrackOut, SubMix,
+        // The mixer's input (its B1 INPUT): Input Config's monitor (0 Off, 1 Auto, 2 On) and what takes record, 0 the
+        // input dry, 1 after its strip (Project::input_wet).
+        InputMonitor, InputWet,
+        PadOut, // Stage's SENDS on a kit, Shift + K2: the last pad's output (PadSound::out), 0 the kit, 1-8 a submix
+        // Samples' trim sheet (shell/browse_trim.h): the file under the cursor's START and END in frames (id 1: not read
+        // yet, the card shows no value), Shift + K2 / K3 its zoom 0..100 (id 0 at START, 1 at END).
+        BrowseStart, BrowseEnd, BrowseZoom,
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -184,18 +198,33 @@ std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, con
 std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row);
 // The tick a held step or note locks at and how long the lock holds; false when nothing is held.
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold);
+// The mixer's cards (docs/MIXER_PLAN.md): the lit block's three values of the selected track's strip (SENDS: sends A-C;
+// EQ: the band group's three; COMP: amount, ratio, speed), or `shift_row`'s (pan, output, send D; none; key, mix,
+// gain). Basic: send A alone, and pan on Shift.
+std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row);
+inline Binding strip_card(unsigned n, StripPart part, const Strip& s) {
+    static constexpr int lo[] {-trim_range, 0, 0, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range,
+                               -eq_range, -eq_range, 0, 0, int(comp_ratio_min), 0, 0, 0, comp_gain_min};
+    static constexpr int hi[] {trim_range, int(width_max), 1, eq_range, eq_range, eq_range, eq_range, eq_range, eq_range, eq_range,
+                               eq_range, eq_range, 1, int(comp_amount_max), int(comp_ratio_max), int(CompSpeed::Count) - 1,
+                               strip_key_most, 100, comp_gain_max};
+    static_assert(sizeof(lo) / sizeof(lo[0]) == size_t(StripPart::Count) && sizeof(hi) / sizeof(hi[0]) == size_t(StripPart::Count));
+    const unsigned p = unsigned(part) % unsigned(StripPart::Count);
+    return {Binding::Kind::Strip, int32_t(n << 8 | p), lo[p], hi[p], strip_get(s, part)};
+}
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
-// Patterns' K1: lengths in bars, as on the MPC; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against
-// a 16-step pattern on another track).
-constexpr unsigned pattern_lengths[] {1, 2, 4, 8, 16, 32, 64, 128};
+// Patterns' K1: lengths in bars, as on the MPC: every bar to 16 (issue 52: 3, 5, 7 ..), then longer steps to 128 so
+// the pot's travel still finds each; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against a
+// 16-step pattern on another track).
+constexpr unsigned pattern_lengths[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 32, 48, 64, 96, 128};
 constexpr unsigned pattern_step_max = 64;
 constexpr unsigned pattern_length_count = sizeof(pattern_lengths) / sizeof(pattern_lengths[0]);
 // A pattern's length in whole bars of the project's signature, rounded up.
 inline unsigned pattern_bars(const Project& project, const Pattern& pattern) {
     return std::max(1u, unsigned((pattern.length + project.bar_ticks() - 1) / project.bar_ticks()));
 }
-// K1's pattern length card: 1, 2, 4 .. 128 bars by index, and -1 Free below them on an empty pattern whose sequence
+// K1's pattern length card: 1, 2, 3 .. 16, 24 .. 128 bars by index, and -1 Free below them on an empty pattern whose sequence
 // has no notes on another track (shell/free_length.h). A Free pattern shows the length a take on it would get.
 Binding length_card(const Project& project, const UiState& ui, const Pattern& pattern);
 // Warp on its card: 0 Off, 1..151 for 50..200 %, 152 Seq; and back.
@@ -217,8 +246,8 @@ int binding_lane(const Track& track, const Binding& b);
 // Erase + pot on a kit pad's own value (Tune, Mix, Play's offset, the envelopes, the filter, its sends, cloud and loop
 // crossfade): the card's value on a new pad, false for Trim's handles, a toggle or a choice.
 bool pad_reset_value(const Binding& b, int& value);
-// Whether Erase + pot sends the card back to its initial value: an engine's, Knob FX's or a plug-in's parameter, or a
-// kit pad's own value.
+// Whether Erase + pot sends the card back to its initial value: an engine's, Knob FX's or a plug-in's parameter, a
+// kit pad's own value, or a lock card (the lock out: the lane back to what it holds there).
 bool erase_resets(const Binding& b);
 // Roll's Shift + K1 NUDGE (round 2): how far `e` sits off its nearest grid line of Q, in ticks (-q/2 .. q/2 - 1);
 // turning it moves the note to that line plus the offset.

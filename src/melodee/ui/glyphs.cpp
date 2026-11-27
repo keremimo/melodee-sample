@@ -152,6 +152,9 @@ Shape make(Icon icon) {
     case Icon::ArrowLeft: s = "M20 12 H5 M11 6 L5 12 L11 18"; break;
     case Icon::SpaceBar: s = "M4 9 V15 H20 V9"; break;
     case Icon::NotEqual: s = "M5 9 H19 M5 15 H19 M16 4 L8 20"; break;
+    case Icon::PlayBack: f = "M17 4 L4 12 L17 20 Z"; break;
+    case Icon::Dice: s = box(4, 4, 16, 16, 4); f = circle(9, 9, 1.7f) + circle(15, 15, 1.7f); break;
+    case Icon::Sound: s = "M4 10 V14 M8 6 V18 M12 8.5 V15.5 M16 4 V20 M20 10 V14"; break;
     case Icon::Snow: // six arms of 9.6 from the middle, each with two barbs at 0.62 of its length
         for (int k = 0; k < 6; ++k) {
             float a = -juce::MathConstants<float>::halfPi + k * juce::MathConstants<float>::pi / 3;

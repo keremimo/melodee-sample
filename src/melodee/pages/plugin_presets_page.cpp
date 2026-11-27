@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // PRESETS (docs/MELODEE.md, Plug-ins): a plug-in's own programs, opened with
-// B2 on a PLUGIN track's Edit or with Presets on a plug-in effect's sheet.
+// Push on a PLUGIN track's Stage PRESETS (or Shift + B2 on its B1 pages) or with
+// Presets on a plug-in effect's sheet.
 // The named ones list with their numbers; the wheel and Minus / Plus move,
 // Push loads the one under the cursor and stays, so the next can be heard
 // straight after (the pads play the track). The one picked last says LOADED
@@ -21,7 +22,8 @@ namespace {
 using namespace ui;
 constexpr unsigned visible = list_rows;
 
-bool for_instrument(const Snapshot& s) { return s.ui.presets_back == PageId::Edit; }
+// The selected track's own plug-in (its colour and tag), not an effect's in a chain.
+bool for_instrument(const Snapshot& s) { return s.track().engine == EngineKind::Plugin && s.track().plugin == s.ui.presets_entry; }
 std::string folder_in_view(const UiState& ui) { return std::string(ui.presets_folder.data()); }
 
 void draw(Paint& p, const Snapshot& s) {

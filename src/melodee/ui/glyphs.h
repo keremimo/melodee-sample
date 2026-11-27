@@ -28,6 +28,9 @@ enum class Icon : uint8_t {
     DeepSnow, // freeze plan F2d: a deep-frozen track, the snowflake cut out of a filled tile
     Bulb, // Settings' LIGHTS
     NotEqual, // Patterns' track list: a track on a pattern of its own, off the sequence in view
+    Dice,     // a track's or step's RND (Patterns' track list, Step Edit's marks)
+    Sound,    // Step Edit: a step playing a sample of its own (step SOUND)
+    PlayBack, // Play the other way: a track playing its steps backward (REV)
     Count
 };
 

@@ -2,9 +2,12 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/mix_hub.h"
+#include "melodee/shell/mixer_channels.h"
+#include "melodee/engine/command.h"
 #include "melodee/model/note_edits.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/midi_config_rows.h"
@@ -26,6 +29,7 @@
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include "melodee/model/generators.h"
@@ -52,6 +56,8 @@ std::array<Binding, 3> favourite_bindings(const Track& track) {
 
 unsigned page_chain(const Project& project, const UiState& ui) {
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) return loop_chain(unsigned(ui.fx_loop) % loop_tracks); // the Looper's track
+    if (ui.page == PageId::Rack && ui.fx_sub >= 0) return sub_chain(unsigned(ui.fx_sub) % sub_count);    // a mixer submix's
+    if (mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0) return unsigned(channel_chain(mixer_strip(ui))); // the mixer's FX block
     if (ui.page == PageId::Bus) return bus_chain(ui.sends_bus % bus_count); // the bus in view (Sends' K2)
     if (ui.page == PageId::Master) return master_chain;
     if (ui.page == PageId::PadFx) { const auto& t = project.tracks[ui.track % track_count]; return pad_chain(ui.track % track_count, t.last_pad % sampler_pads); }
@@ -104,13 +110,6 @@ Binding cloud_card(const PadSound& pad, int id) {
 }
 // The Sample Mode cards of the last pad hit (parity phase 4).
 Binding trim_zoom(const UiState& ui, int handle) { return {Kind::TrimZoom, handle, 0, zoom_top, ui.trim_zoom}; }
-// A handle's card in frames between lo and hi: zoomed in, the pot turns across the view on screen
-// (shell/zoom_view.h), which stays put while the handle is inside it.
-Binding handle_card(Kind kind, int id, uint32_t value, uint32_t lo, uint32_t hi, FrameView view) {
-    if (view.width() && value >= view.from && value <= view.to) { lo = std::max(lo, view.from); hi = std::min(hi, view.to); } // another handle's view: all of it
-    if (hi <= lo) { lo = std::min(lo, value); hi = std::max(hi, value + 1); }
-    return {kind, id, int(lo), int(hi), int(std::clamp(value, lo, hi))};
-}
 // Decay on One shot, Release on Note On (Gate), as the MPC swaps them; the other on row 2.
 Binding amp_second(const PadSound& pad, bool other) {
     bool decay = (pad.play == PadPlay::OneShot) != other;
@@ -135,9 +134,24 @@ const std::array<ParamInfo, bus_count> send_infos {{{"SEND A", 0, 100, 0, Format
 const std::array<ParamInfo, bus_count> return_infos {{{"RETURN A", 0, 100, 70, Format::Percent}, {"RETURN B", 0, 100, 70, Format::Percent},
                                                        {"RETURN C", 0, 100, 70, Format::Percent}, {"RETURN D", 0, 100, 70, Format::Percent}}};
 
+// The mixer's strip lanes (model/strip.h strip_lane_parts) as Motion names them.
+const char* const strip_speed_choices[] {"FAST", "MED", "SLOW", "AUTO"};
+const std::array<ParamInfo, motion_strip_count> strip_infos {{
+    {"TRIM", -trim_range, trim_range, 0, Format::Tenths}, {"WIDTH", 0, int16_t(width_max), 100, Format::Percent},
+    {"63 Hz", -eq_range, eq_range, 0, Format::Tenths}, {"125 Hz", -eq_range, eq_range, 0, Format::Tenths},
+    {"250 Hz", -eq_range, eq_range, 0, Format::Tenths}, {"500 Hz", -eq_range, eq_range, 0, Format::Tenths},
+    {"1 kHz", -eq_range, eq_range, 0, Format::Tenths}, {"2 kHz", -eq_range, eq_range, 0, Format::Tenths},
+    {"4 kHz", -eq_range, eq_range, 0, Format::Tenths}, {"8 kHz", -eq_range, eq_range, 0, Format::Tenths},
+    {"16 kHz", -eq_range, eq_range, 0, Format::Tenths}, {"AMOUNT", 0, int16_t(comp_amount_max), 0, Format::Number},
+    {"RATIO", int16_t(comp_ratio_min), int16_t(comp_ratio_max), 40, Format::Tenths},
+    {"SPEED", 0, int16_t(int(CompSpeed::Count) - 1), 1, Format::Choice, strip_speed_choices}, {"MIX", 0, 100, 100, Format::Percent},
+    {"GAIN", int16_t(comp_gain_min), int16_t(comp_gain_max), 0, Format::Tenths}}};
+
 MotionParam motion_param(const Track& track, int lane, const Project* project) {
     if (lane < 0) return {};
     int param = int(lane_param(lane));
+    if (is_strip_lane(unsigned(param))) // the mixer: the track's strip
+        return {&strip_infos[unsigned(param) - motion_strip_base], strip_get(track.strip, strip_lane_part(unsigned(param)))};
     if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? MotionParam {&bend_info, track.bend} : MotionParam {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4
@@ -189,6 +203,7 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
     if (unsigned(param) == motion_pad_mute) // issue 32: the pad's mute, as Mute + pad sets it
         return track.sampled() ? Binding {Kind::PadMute, int32_t(lane_pad(lane) % sampler_pads), 0, 1, int(track.pad_muted(lane_pad(lane)))} : Binding {};
+    if (is_strip_lane(unsigned(param))) return strip_card(t, strip_lane_part(unsigned(param)), track.strip); // the mixer
     if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
         auto m = motion_param(track, lane, project);
         if (!m.info) return {};
@@ -246,7 +261,7 @@ bool lock_place(const Project& project, const UiState& ui, const Pattern& patter
     unsigned q = pattern.q();
     // Step Edit: a step held (the pads on the steps), or the caret's on LOCK; as long as its longest note on its lane
     // (a step at least)
-    if (ui.page == PageId::StepEdit && (ui.held_step >= 0 || ui.step_cards % (steps_lane(track) >= 0 ? 4 : 3) == 1)) {
+    if (ui.page == PageId::StepEdit && (ui.held_step >= 0 || step_set(track, ui.step_cards) == cards_lock)) {
         unsigned st = unsigned(ui.held_step >= 0 ? ui.held_step : std::max<int>(ui.step_cursor, 0)) % pattern.steps();
         tick = st * q; hold = q;
         int lane = steps_lane(track);
@@ -281,6 +296,7 @@ int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
     if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
     if (b.kind == Kind::PitchBend) return motion_lane(motion_bend);
+    if (b.kind == Kind::Strip && (unsigned(b.id) >> 8) < track_count) { const int lane = motion_strip(StripPart(b.id & 0xff)); return lane >= 0 ? motion_lane(unsigned(lane)) : -1; }
     if (!track.sampled()) return -1;
     if (int p = card_pad_param(b); p >= 0) return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads); // on the last pad hit
     return -1;
@@ -296,7 +312,72 @@ bool pad_reset_value(const Binding& b, int& value) {
 
 bool erase_resets(const Binding& b) {
     int value = 0;
-    return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || pad_reset_value(b, value);
+    return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || b.kind == Kind::Lock
+        || pad_reset_value(b, value);
+}
+
+namespace {
+std::array<Binding, 3> effect_row(unsigned id, const EffectSlot& s, unsigned row);
+std::array<Binding, 3> plugin_cards(const UiState& ui, unsigned entry);
+} // namespace
+
+std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row) {
+    const unsigned n = mixer_strip(ui);
+    const ChannelKind kind = channel_kind(n);
+    if (kind == ChannelKind::Track && !project.tracks[n].used()) return {};
+    auto strip = [&](StripPart part) { return strip_card(n, part, project.strip(n)); };
+    // SENDS: a track's or a submix's sends, pan and (a track's) output.
+    Binding pan, out;
+    std::array<Binding, bus_count> sends;
+    if (kind == ChannelKind::Track) {
+        const auto& mix = project.tracks[n].mix;
+        pan = {Kind::Pan, 0, -50, 50, mix.pan};
+        out = {Kind::TrackOut, int32_t(n), 0, int(sub_count), mix.out};
+        for (unsigned b = 0; b < bus_count; ++b) sends[b] = {Kind::Send, int32_t(b), 0, 100, mix.sends[b]};
+    } else if (kind == ChannelKind::Submix) {
+        const unsigned sub = channel_sub(n);
+        const auto& mix = project.subs[sub].mix;
+        auto part = [&](unsigned p) { return int32_t(sub << 8 | p); };
+        pan = {Kind::SubMix, part(Command::SubPan), -50, 50, mix.pan};
+        for (unsigned b = 0; b < bus_count; ++b) sends[b] = {Kind::SubMix, part(Command::SubSend0 + b), 0, 100, mix.sends[b]};
+    }
+    const unsigned block = mixer_block_of(ui, kind);
+    const bool second = shift_row != (ui.mixer_row != 0); // − / + left SENDS or COMP on its second row: Shift shows the first
+    if (!full_features(ui)) return second ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {sends[0], Binding {}, Binding {}};
+    if (block == block_input) { // the input: its strip's trim, Input Config's monitor, and dry or wet takes
+        if (shift_row) return {};
+        return {strip(StripPart::Trim), Binding {Kind::InputMonitor, 0, 0, int(Monitor::Count) - 1, int(ui.settings.input.monitor)},
+                Binding {Kind::InputWet, 0, 0, 1, project.input_wet ? 1 : 0}};
+    }
+    if (block == block_comp && kind == ChannelKind::Master) { // the printed Compressor, as its page: Shift + K3 In Boost
+        const auto& c = project.compressor;
+        if (second) return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, c.boost}};
+        return {Binding {Kind::CompAttack, 0, 0, 100, c.attack}, Binding {Kind::CompRelease, 0, 0, 100, c.release},
+                Binding {Kind::CompAmount, 0, 0, 100, c.amount}};
+    }
+    if (block == block_fx) { // the lit effect of the channel's chain, as its FX page has it (the same cursor and row)
+        const int chain = channel_chain(n);
+        if (chain < 0) return {};
+        const auto& c = project.chain(unsigned(chain));
+        const unsigned at = UiState::cursor_of(unsigned(chain)), slot = ui.fx_cursor[at];
+        if (slot >= c.count()) return {}; // the plus
+        if (c.slots[slot].kind == plugin_effect_kind) return shift_row ? std::array<Binding, 3> {} : plugin_cards(ui, unsigned(c.slots[slot].params[0]));
+        return effect_row(unsigned(chain) * 64 + slot * 8, c.slots[slot], shift_row ? 1 - ui.fx_row[at] % 2 : ui.fx_row[at]);
+    }
+    shift_row = second;
+    switch (block) {
+    case 1: { // EQ: the group's three bands
+        if (shift_row) return {};
+        const unsigned g = ui.mixer_eq_group % 3;
+        return {strip(eq_part(g * 3)), strip(eq_part(g * 3 + 1)), strip(eq_part(g * 3 + 2))};
+    }
+    case 2:
+        if (shift_row) return {strip(StripPart::Key), strip(StripPart::Mix), strip(StripPart::Gain)};
+        return {strip(StripPart::Amount), strip(StripPart::Ratio), strip(StripPart::Speed)};
+    default:
+        if (shift_row) return {pan, out, sends[3]};
+        return {sends[0], sends[1], sends[2]};
+    }
 }
 
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const Pattern& pattern) {
@@ -325,7 +406,7 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
 unsigned effect_rows(const EffectSlot& s, unsigned chain) {
     const auto& info = effect_info(EffectKind(s.kind));
     unsigned own = info.params[3].label ? 2 : 1;
-    return own + (fx_keyable(s.kind) && chain < chain_count ? 1 : 0);
+    return own + (fx_keyable(s.kind) && chain < mix_chain_count ? 1 : 0);
 }
 
 namespace {
@@ -336,7 +417,7 @@ std::array<Binding, 3> effect_row(unsigned id, const EffectSlot& s, unsigned row
     if (s.kind == plugin_effect_kind) return out; // its entry is no card: the plug-in's own are (plugin_cards())
     unsigned rows = effect_rows(s, id / 64);
     row = std::min(row, rows - 1);
-    if (fx_keyable(s.kind) && id / 64 < chain_count && row == rows - 1) { // roadmap P4: KEY, a row of its own on K1
+    if (fx_keyable(s.kind) && id / 64 < mix_chain_count && row == rows - 1) { // roadmap P4: KEY, a row of its own on K1
         out[0] = {Kind::FxKey, int32_t(id), 0, int(fx_keys) - 1, s.key};
         return out;
     }
@@ -507,7 +588,7 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     if (page.kind == SK::Colour) { // K1 (and the wheel) the last pad's colour; Shift nothing
         const auto& pad = track.pads[track.last_pad % sampler_pads];
         if (shift_row || track.engine != EngineKind::Sampler || !pad.used()) return {};
-        return {Binding {Kind::PadColour, 0, colour_track, colour_last(pad.colour), colour_choice(pad.colour)}, Binding {}, Binding {}};
+        return {Binding {Kind::PadColour, 0, colour_track, colour_last(pad), colour_choice(pad.colour)}, Binding {}, Binding {}};
     }
     switch (page.kind) {
     case SK::Params: {
@@ -547,21 +628,14 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
                 Binding {Kind::AudioMonitorMode, 0, 0, int(TrackMonitor::Count) - 1, int(track.audio.monitor)},
                 Binding {Kind::RecGain, 0, -12, 24, ui.settings.input.gain}};
     }
-    case SK::Mix: // level, pan and the quick send, into bus A (SENDS has all four)
-        if (shift_row) return {};
-        return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
-                Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}};
-    case SK::Sends: { // as MIX's SENDS: K1 the track's send, K2 the bus (A-D, the one Sends and Bus show too), K3 its return
+    case SK::Sends: { // a kit's only, since the mixer (step 6): K1 the last pad's own send, K2 the bus (A-D), K3 its return
+        if (track.engine != EngineKind::Sampler) return {};
         unsigned bus = ui.sends_bus % bus_count;
-        Binding own {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]};
-        if (track.engine == EngineKind::Sampler) { // a kit: K1 the last pad's own send, Shift + K1 the whole kit's (KIT SEND)
-            if (shift_row) return {own, Binding {}, Binding {}};
-            const auto& pad = track.pads[track.last_pad % sampler_pads];
-            own = pad.used() ? Binding {Kind::PadSend, int(bus), 0, 100, pad.sends[bus]} : Binding {};
-        } else if (shift_row) {
-            return {};
-        }
-        return {own, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        if (shift_row) // Shift + K2: the last pad's output, the kit or a submix (MPC 3's pad output)
+            return {Binding {}, pad.used() ? Binding {Kind::PadOut, 0, 0, int(sub_count), int(pad.out)} : Binding {}, Binding {}};
+        return {pad.used() ? Binding {Kind::PadSend, int(bus), 0, 100, pad.sends[bus]} : Binding {},
+                Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
     case SK::Arp:
@@ -631,6 +705,19 @@ std::array<Binding, 3> levels_cards(const Project& project, const Track& track) 
             Binding {Kind::LevelsHigh, 0, range.low, range.high, ends[1]}};
 }
 
+// Step Edit's SOUND row on step `at` (on a kit its lane's note): its sample, slice and way.
+std::array<Binding, 3> sound_cards(const Project& project, const Track& track, const Pattern& pattern, unsigned at) {
+    int n = lane_event(pattern, at, steps_lane(track));
+    if (n < 0) return {};
+    const auto& e = pattern.events[size_t(n)];
+    const auto choices = step_sound_choices(project);
+    const unsigned slices = step_sound_slices(project, track, e.key, e.sample);
+    const int slice = e.slice == slice_random ? int(slices) + 1 : std::min<int>(e.slice, int(slices));
+    return {Binding {Kind::StepSound, int(e.sample), 0, int(choices.size()), std::max(step_sound_index(choices, e.sample), 0)},
+            Binding {Kind::StepSlice, int(slices), 0, slices ? int(slices) + 1 : 0, slices ? slice : 0},
+            Binding {Kind::StepPlay, 0, 0, int(StepPlay::Count) - 1, int(step_play(e.flags))}};
+}
+
 std::array<Binding, 3> trig_cards(const Event& e, bool step) {
     return {Binding {step ? Kind::StepRatchet : Kind::EventRatchet, 0, 1, int(max_ratchet), int(e.hits())},
             Binding {step ? Kind::StepRamp : Kind::EventRamp, 0, -100, 100, e.ramp},
@@ -648,9 +735,11 @@ std::array<Binding, 3> pattern_shift_cards(const Project& project, const UiState
     uint32_t length = free_shown(pattern, ui.column_ticks);
     if (!length) length = pattern.length;
     unsigned steps = std::clamp<unsigned>((length + sixteenth_ticks - 1) / sixteenth_ticks, 1, pattern_step_max);
+    const auto& track = project.tracks[ui.track % track_count];
+    const Binding speed = track.used() ? Binding {Kind::TrackSpeed, int(ui.track % track_count), 0, int(speed_count) - 1, track.speed % int(speed_count)} : Binding {};
     return {Binding {Kind::PatternSteps, 0, 1, int(pattern_step_max), int(steps)},
             Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
-            Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
+            speed}; // the track's playback speed (roadmap P1; since the mixer, here: the click level is on Tempo)
 }
 } // namespace
 
@@ -666,9 +755,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     }
     if (knob_owns(project, ui)) return knob_bindings(project, true);
     switch (ui.page) {
-    case PageId::Tracks: // Shift + K1: the strip in hand's playback speed (roadmap P1)
-        if (!track.used()) return {};
-        return {Binding {Kind::TrackSpeed, int(ui.track % track_count), 0, int(speed_count) - 1, track.speed % int(speed_count)}, Binding {}, Binding {}};
+    case PageId::Mixer: return mixer_cards(project, ui, true);
     case PageId::Looper: { // Shift: feedback, Quantize, After take (the loop's sheet too); on MIX Shift + K3 the bus
         unsigned l = ui.loop % loop_tracks;
         if (!project.looper.on) return {};
@@ -688,6 +775,11 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
             return track.used() ? std::array<Binding, 3> {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}}
                                 : std::array<Binding, 3> {};
         return pattern_shift_cards(project, ui, pattern);
+    case PageId::Samples: { // Shift + K2 / K3: the trim sheet's zoom at START or END, as on Trim
+        if (ui.sheet_open || !(ui.browse.up() || ui.files_audio)) return {};
+        const auto zoom = browse_zoom_cards(project, ui.browse);
+        return {Binding {}, zoom[0], zoom[1]};
+    }
     case PageId::Scenes: // roadmap P5: Shift + K1 the follow action's second, on the odds the first leaves
         if (!follow_shown(ui)) return pattern_shift_cards(project, ui, pattern); // Basic: as Patterns' Shift row
         if (!track.used()) return {};
@@ -705,14 +797,14 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         int lane = steps_lane(track);
         if (ui.held_step >= 0) return {};
         if (lane >= 0) {
-            unsigned q = pattern.q(), steps = pattern.steps(), set = ui.step_cards % 4;
+            unsigned q = pattern.q(), steps = pattern.steps(), set = step_set(track, ui.step_cards);
             unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % steps;
-            if (set == 2) {
+            if (set == cards_trig) {
                 int n = lane_event(pattern, at, lane);
                 if (n < 0) return {};
                 return {Binding {}, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
             }
-            if (set == 3 || ui.step_pads) {
+            if (set == cards_euclid || ui.step_pads) {
                 unsigned own = std::clamp<unsigned>((pattern.lane_length(unsigned(lane)) + q - 1) / q, 1, steps);
                 return {Binding {Kind::LaneLength, lane, 1, int(std::max(steps, 2u)), int(own)}, Binding {}, Binding {}};
             }
@@ -857,7 +949,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::PluginPresets: return plugin_cards(ui, ui.presets_entry); // its row on K1-K3 while presets are heard
     case PageId::Edit: {
-        if (track.engine == EngineKind::Plugin) return plugin_cards(ui, track.plugin);
         const auto& info = engine_info(track.engine);
         if (!info.page_count) return {};
         if (is_mod_page(info, ui.edit_page[ui.track])) {
@@ -938,18 +1029,24 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::StepEdit: { // B1's card sets on the caret's step; on a kit (or Drums) its lane's note, the last pad's
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
-        if (ui.held_step >= 0) return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q()); // STEPS, held: locks
+        const unsigned set = step_set(track, ui.step_cards);
+        if (sounds_open(ui)) return sound_cards(project, track, pattern, sound_step(ui, pattern)); // the sounds on the pads: the step's
+        if (ui.held_step >= 0) { // STEPS, held: its SOUND row on SOUND, else locks
+            if (set == cards_sound) return sound_cards(project, track, pattern, unsigned(ui.held_step) % pattern.steps());
+            return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q());
+        }
         int lane = steps_lane(track);
         bool spare = in_spare(ui, pattern); // past the end (shell/spare_bar.h): no step's cards, only what a pad writes
-        switch (ui.step_cards % (lane >= 0 ? 4 : 3)) {
-        case 1: if (spare) return {}; return lock_cards(project, ui, pattern, at * pattern.q()); // LOCK: the Motion lanes locked on the caret's step
-        case 2: { // TRIG: its ratchet, ramp and condition
+        switch (set) {
+        case cards_lock: if (spare) return {}; return lock_cards(project, ui, pattern, at * pattern.q()); // LOCK: the Motion lanes locked on the caret's step
+        case cards_sound: if (spare) return {}; return sound_cards(project, track, pattern, at); // SOUND: its sample, slice, way
+        case cards_trig: { // TRIG: its ratchet, ramp and condition
             if (spare) return {};
             int n = lane_event(pattern, at, lane);
             if (n < 0) return {};
             return trig_cards(pattern.events[size_t(n)], true);
         }
-        case 3: { // EUCLID: the last pad's lane's rhythm (roadmap P1)
+        case cards_euclid: { // EUCLID: the last pad's lane's rhythm (roadmap P1)
             unsigned key = unsigned(lane);
             const EuclidLane* e = euclid_of(pattern, key);
             int steps = e ? e->steps : int(std::min(pattern.steps(), euclid_max_steps));
@@ -1010,7 +1107,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         int length_value = clip >= 0 ? project.song.clips[size_t(clip)].bars : ui.song_length;
         return {Binding {Kind::SongZoom, 0, 0, int(sizeof(song_zooms) / sizeof(song_zooms[0])) - 1, ui.song_zoom},
                 Binding {Kind::SongPattern, int16_t(clip), 0, int(pattern_count) - 1, pattern_value},
-                Binding {Kind::SongLength, int16_t(clip), 1, 16, length_value}};
+                Binding {Kind::SongLength, int16_t(clip), 1, int(max_bars), length_value}};
     }
     case PageId::Rack:
     case PageId::Bus:
@@ -1021,16 +1118,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         if (slot >= c.count() || ui.picker_open) return {};
         if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
         return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)]); // a keyed kind's KEY last (roadmap P4)
-    }
-    case PageId::Sends: { // one bus at a time: K1 the track's send into it (a kit's pads: the last pad's), K2 which bus, K3 its return
-        unsigned bus = ui.sends_bus % bus_count;
-        Binding first {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]};
-        if (mix_sends_pads(ui, track.engine == EngineKind::Sampler)) {
-            const auto& pad = track.pads[track.last_pad % sampler_pads];
-            first = pad.used() ? Binding {Kind::PadSend, int(bus), 0, 100, pad.sends[bus]} : Binding {};
-        }
-        return {first, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
-                Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
     case PageId::Pads: {
         if (track.engine != EngineKind::Sampler) return favourite_bindings(track); // a synth: its own three
@@ -1101,8 +1188,12 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::FlexBeat: // K1 One Shot / Loop, K3 mix (as on the MPC)
         return {Binding {Kind::FlexMode, 0, 0, 1, project.flex.mode}, Binding {}, Binding {Kind::FlexMix, 0, 0, 100, project.flex.mix}};
-    case PageId::Samples: // every list: K1 jumps, the other pots draw nothing
-        return {Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}, Binding {}};
+    case PageId::Samples: { // every list: K1 jumps; on an audio file K2 START, K3 END (the trim sheet, shell/browse_trim.h)
+        const Binding jump {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor};
+        if (ui.sheet_open || !(ui.browse.up() || ui.files_audio)) return {jump, Binding {}, Binding {}};
+        const auto trim = browse_cards(project, ui.browse);
+        return {jump, trim[0], trim[1]};
+    }
     case PageId::Plugins:
         return {Binding {Kind::PluginJump, 0, 0, std::max(int(ui.plugins_count) - 1, 1), ui.plugins_cursor}, Binding {}, Binding {}};
     case PageId::Roll: { // the note in focus: K1 its length in steps of Q, K2 velocity, K3 chance; none, no cards
@@ -1141,6 +1232,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Tracks: // the strip in hand, as Stage's MIX: K1 its level, K2 its pan, K3 its send into bus A (pads and the wheel pick the track)
         return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
                 Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}};
+    case PageId::Mixer: return mixer_cards(project, ui, false);
     default: return favourite_bindings(track);
     }
 }

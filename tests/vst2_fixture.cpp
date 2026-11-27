@@ -42,7 +42,10 @@ bool screenInput(const void* plugin, const melodee_screen_input_t* in) {
     auto& t = of(plugin);
     if (in->kind == MELODEE_SCREEN_WHEEL) t.level = std::clamp(t.level + float(in->value) * 0.01f, 0.0f, 1.0f);
     else if (in->kind == MELODEE_SCREEN_PUSH) t.wave = t.wave > 0.5f ? 0.0f : 1.0f;
+    else if (in->kind == MELODEE_SCREEN_MUTE) t.level = 0.0f;
     else return false;
+    // Push: its page takes Mute from now on; Mute (Level to 0): no longer.
+    t.host(&t.effect, vst2::host::vendorSpecific, MELODEE_SCREEN_VST2_KEYS, in->kind == MELODEE_SCREEN_PUSH ? MELODEE_SCREEN_KEY_MUTE : 0, nullptr, 0.0f);
     t.host(&t.effect, vst2::host::vendorSpecific, MELODEE_SCREEN_VST2, MELODEE_SCREEN_RUN, nullptr, 0.0f);
     return true;
 }

@@ -43,6 +43,7 @@ struct Plugin {
     bool instrument = false;
     double rate = 44100, level = 0.5, wave = 0, gain = 1;
     std::map<int, double> phases; // key: phase of its sine
+    std::atomic<uint32_t> tailFrames {0};
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
     int drawnBar = -1;            // its screen's bar as last drawn, pixels
 
@@ -239,6 +240,15 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     auto& s = of(p);
     s.audio();
     for (uint32_t i = 0, n = proc->in_events->size(proc->in_events); i < n; ++i) event(s, proc->in_events->get(proc->in_events, i));
+    if (!s.instrument) {
+        // The Loud preset gains a two-second tail, applied on the audio thread.
+        const uint32_t frames = s.gain > 1 ? uint32_t(2 * s.rate) : 0;
+        if (frames != s.tailFrames.load()) {
+            s.tailFrames.store(frames);
+            if (auto* tail = static_cast<const clap_host_tail*>(s.host->get_extension(s.host, CLAP_EXT_TAIL)))
+                tail->changed(s.host);
+        }
+    }
     if (s.outLevel >= 0) {
         clap_event_param_value v {};
         v.header = {sizeof(v), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
@@ -299,7 +309,11 @@ bool screenInput(const void* p, const melodee_screen_input_t* in) {
     if (in->kind == MELODEE_SCREEN_WHEEL && s.instrument) s.level = std::clamp(s.level + in->value * 0.01, 0.0, 1.0);
     else if (in->kind == MELODEE_SCREEN_WHEEL) s.gain = std::clamp(s.gain + in->value * 0.02, 0.0, 2.0);
     else if (in->kind == MELODEE_SCREEN_PUSH && s.instrument) s.wave = std::fmod(s.wave + 1, 3);
+    else if (in->kind == MELODEE_SCREEN_ERASE && s.instrument) s.level = 0;
     else return false;
+    if (s.instrument) // Push: its page takes Erase from now on; Erase (Level to 0): no longer
+        if (auto* told = static_cast<const melodee_screen_host_2_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST_2)))
+            told->keys(s.host, in->kind == MELODEE_SCREEN_PUSH ? uint32_t(MELODEE_SCREEN_KEY_ERASE) : 0u);
     if (auto* told = static_cast<const melodee_screen_host_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST)))
         told->redraw(s.host, MELODEE_SCREEN_RUN);
     if (auto* hp = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS)))
@@ -321,6 +335,8 @@ const void* extension(const clap_plugin* p, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_STATE)) return &state;
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notePorts;
+    static const clap_plugin_tail tail {[](const clap_plugin* plug) { return of(plug).tailFrames.load(); }};
+    if (!std::strcmp(id, CLAP_EXT_TAIL) && !of(p).instrument) return &tail;
     if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latencyExt;
     if (!std::strcmp(id, CLAP_EXT_PRESET_LOAD)) return &presetLoad;
     if (!std::strcmp(id, CLAP_EXT_REMOTE_CONTROLS) && of(p).instrument) return &remoteControls;

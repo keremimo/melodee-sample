@@ -21,6 +21,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/screen_view.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
@@ -124,6 +125,14 @@ void draw(Paint& p, const Snapshot& s) {
         keys.accent = c;
         ends("LOOPER", "L" + juce::String(l + 1), "");
         h.right.push_back(chip("L" + juce::String(l + 1), c));
+    } else if (track && s.ui.fx_sub >= 0) { // a mixer submix's chain (Shift + Knob FX on the mixer): B1 back to the mixer
+        unsigned sub = unsigned(s.ui.fx_sub) % sub_count;
+        c = sub_colour(sub);
+        keys.accent = c;
+        ends("MIXER", "S" + juce::String(sub + 1), "");
+        h.left.push_back(pill("SUBMIX FX", c));
+        const auto& name = s.project.subs[sub].name;
+        h.right.push_back(label(name[0] ? name_case(name) : "S" + juce::String(sub + 1), colour::mid));
     } else if (track) { keys = mix_keys(s); h.left.push_back(pill("TRACK FX", c)); h.right.push_back(tag_of(s, s.ui.track)); }
     else if (s.ui.page == PageId::Bus) {
         keys = mix_keys(s); keys.accent = c; // a bus belongs to no track: neutral
@@ -203,6 +212,7 @@ void add_from_picker(Context& c) {
     c.set_effect(n, cursor, list[c.ui.picker_item]);
     c.ui.fx_row[at] = 0;
     c.ui.picker_open = false;
+    c.picker_done();
 }
 
 void wheel(Context& c, int delta) {
@@ -272,7 +282,7 @@ void push(Context& c) {
 void soft(Context& c, int key) {
     auto& ui = c.ui;
     if (ui.picker_open) {
-        if (key == 0) { if (ui.picker_items) ui.picker_items = false; else ui.picker_open = false; }
+        if (key == 0) { if (ui.picker_items) ui.picker_items = false; else { ui.picker_open = false; c.picker_done(); } }
         if (key == 2) { if (ui.picker_items) add_from_picker(c); else { ui.picker_items = true; ui.picker_item = 0; } }
         return;
     }
@@ -297,6 +307,10 @@ void soft(Context& c, int key) {
         if (key == 2) return;
     }
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) { if (key == 0) c.open(PageId::Looper); return; } // a loop track's chain
+    if (ui.page == PageId::Rack && ui.fx_sub >= 0) { // a submix's: B1 the mixer, on it
+        if (key == 0) { pick_other(ui, strip_sub(unsigned(ui.fx_sub))); c.open(PageId::Mixer); }
+        return;
+    }
     mix_soft(c, key); // the MIX hub's row
 }
 

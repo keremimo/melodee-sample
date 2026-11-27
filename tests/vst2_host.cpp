@@ -86,6 +86,12 @@ int main(int argc, char** argv) {
         CHECK(screen->screenDraw(frame, changed) && changed && pixels[190] == 0x40c0ffu);
         melodee_screen_input_t step {MELODEE_SCREEN_STEP, -1, 0};
         CHECK(screen->screenInput(step, used) && !used);
+        // The printed buttons its page takes (MELODEE_SCREEN_VST2_KEYS): Mute after Push, none after Mute. The 32-bit
+        // bridge does not pass them on yet: none there.
+        CHECK(screen->screenKeys() == 0);
+        melodee_screen_input_t push {MELODEE_SCREEN_PUSH, 1, 0}, mute {MELODEE_SCREEN_MUTE, 1, 0};
+        CHECK(screen->screenInput(push, used) && used && screen->screenKeys() == (bridged ? 0u : uint32_t(MELODEE_SCREEN_KEY_MUTE)));
+        CHECK(screen->screenInput(mute, used) && used && screen->screenKeys() == 0);
         std::array<int, 3> controls {};
         CHECK(screen->screenControls(controls) && controls[0] == 0 && controls[1] == 1 && controls[2] == -1);
         tone->releaseResources();

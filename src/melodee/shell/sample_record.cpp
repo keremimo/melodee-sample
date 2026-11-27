@@ -6,7 +6,7 @@
 //
 // - Input Config (Shift + Sample) and Record share K1 source (Mic, Rear,
 //   Rear L / R, Resample, USB, USB L / R), K2 rec length (Free, Seq,
-//   Melodee's 1-16 bars), K3 threshold (-96 dB: at once) and B1 monitor
+//   1-16 bars, then 24 to 128), K3 threshold (-96 dB: at once) and B1 monitor
 //   (Off, Auto: while Record is in view, On); Shift + K3 is Melodee's gain.
 //   Input Config adds B2 Rec Input FX. They are kept with Melodee's
 //   settings, a second after the last change.
@@ -39,7 +39,7 @@ using Type = Command::Type;
 using State = TakeRecorder::State;
 
 namespace {
-// RecordArm's rec length: 0 Free, 1..16 bars, 255 Seq.
+// RecordArm's rec length: 0 Free, 1..128 bars, 255 Seq.
 uint8_t length_code(const InputConfig& in) {
     return in.length == rec_free ? 0 : in.length == rec_seq ? 255 : uint8_t(rec_bars(in.length));
 }

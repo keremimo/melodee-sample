@@ -52,7 +52,7 @@ inline const std::array<MenuPlace, 16>& menu_places() {
         {"RECORD", "SAMPLE RECORD", 0, PageId::Record}, {"CHOP", "CHOP", 0, PageId::Chop},
         {"SEQUENCE", "SEQ", 1, PageId::Scenes}, {"ROLL", "SEQ, B2", 1, PageId::Roll}, // SEQUENCES is wider than a tile's label at the text floor
         {"STEP EDIT", "SHIFT + SEQ", 1, PageId::StepEdit}, {"MOTION", "SEQ, B3", 1, PageId::Motion},
-        {"MIXER", "PAD FX + KNOB FX", 2, PageId::Tracks}, {"SENDS", "PAD FX + KNOB FX, B2", 2, PageId::Sends},
+        {"MIXER", "PAD FX + KNOB FX", 2, PageId::Mixer}, {"", "", 2, PageId::Sends}, // pad 10: free since the mixer (step 6), never shown
         {"EFFECTS", "SHIFT + KNOB FX", 2, PageId::Rack}, {"LOOPER", "LOOP + 16 LEVELS", 2, PageId::Looper},
         {"SONG", "SHIFT + PAD 12", 3, PageId::Song}, {"PROJECT", "SHIFT + PAD 16", 3, PageId::Project},
         {"SETTINGS", "SHIFT + PAD 8", 3, PageId::SettingsPage}, {"LEARN", "", 3, PageId::Count}, // LEARN: the lessons (shell/lesson.h); in one, LEAVE
@@ -113,8 +113,7 @@ inline const char* menu_page_name(PageId page) {
     case PageId::Motion: return "MOTION";
     case PageId::ModPage: return "MOD";
     case PageId::StepEdit: return "STEP EDIT";
-    case PageId::Tracks: return "MIXER";
-    case PageId::Sends: return "SENDS";
+    case PageId::Mixer: return "MIXER";
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return "EFFECTS";
     case PageId::Stage: return "STAGE";
     default: return "";
@@ -152,7 +151,7 @@ inline unsigned menu_here(const Project& project, const UiState& ui, std::array<
     case PageId::ModPage: // MOD and MACRO: the lane last turned onto the modulator or macro in hand
         add(J::ModAdd, "ADD TARGET", "SHIFT + B3");
         break;
-    case PageId::Tracks: case PageId::Sends: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: case PageId::Stage:
+    case PageId::Mixer: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: case PageId::Stage:
         if (ui.page == PageId::Stage && levels_keys(track).key[0] != LevelsKey::None) { // the pads as chords (shell/levels_keys.h), and their file
             add(J::Chords, "CHORDS", "16 LEVELS + B2");
             add(J::ChordFile, "CHORD FILE", "16 LEVELS + B2, B2");
@@ -163,7 +162,7 @@ inline unsigned menu_here(const Project& project, const UiState& ui, std::array<
         }
         add(J::TrackMove, "MOVE TRACK", "PAD BANK + B2");
         add(J::TrackCopy, "COPY TRACK", "PAD BANK + B3");
-        if (track.used()) add(J::TrackName, "NAME TRACK", "TRACKS, SHIFT + PUSH");
+        if (track.used()) add(J::TrackName, "NAME TRACK", "MIXER, SHIFT + PUSH");
         if (looper_shown(ui)) add(J::Looper, "LOOPER", "LOOP + 16 LEVELS");
         freeze();
         add(J::TrackClear, "CLEAR TRACK", "PAD BANK + ERASE + PAD", true);

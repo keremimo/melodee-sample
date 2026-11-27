@@ -46,6 +46,15 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     if (ui.exit_open || ui.name.open() || ui.ask != UiState::Ask::None) return false; // the sheets keep their own lights
     if (ui.page == PageId::CardAccess || ui.card.state != 0) return false;             // SD card access: Shift does nothing
     bool kit = project.tracks[ui.track % track_count].engine == EngineKind::Sampler;
+    { // a PLUGIN track's B1 pages on Stage: Shift + B1 PLUG-INS, B2 PRESETS (when it has some), B3 TRANSPORT
+        const auto& tr = project.tracks[ui.track % track_count];
+        if (ui.page == PageId::Stage && tr.engine == EngineKind::Plugin && stage_plugin_page(stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind)
+            && (button == B::TopLeft || button == B::TopMiddle || button == B::TopRight)) {
+            const bool chosen = tr.plugin < max_plugins;
+            if (button == B::TopMiddle) return chosen && ui.plugin_panel.entry == tr.plugin && ui.plugin_panel.programs > 0;
+            return button == B::TopLeft || chosen;
+        }
+    }
     switch (button) {
     case B::Sample: case B::Seq: case B::PadBank: case B::SampleSelect: case B::Mute: case B::TapTempo:
     case B::SeqRecord: case B::Play: case B::Stop: case B::Minus: case B::Plus: case B::WheelPush: case B::Shift:
@@ -54,7 +63,6 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::Chop: return kit && project.tracks[ui.track % track_count].pads[project.tracks[ui.track % track_count].last_pad % sampler_pads].used(); // Note On
     case B::SixteenLevels: return project.tracks[ui.track % track_count].used(); // the 16 Levels type
     case B::TopLeft: case B::TopMiddle: { // Loop Lock, Normalize on a kit's Stage TRIM; Extract, Split on Chop; LOAD, CLEAR on LAYERS; Patterns', Step Edit's
-        if (button == B::TopMiddle && ui.page == PageId::Tracks) return true; // MOVE on Tracks
         if (ui.page == PageId::Patterns || ui.page == PageId::StepEdit) return true; // SCENE, FOLLOW; PADS, TIE
         if (!kit) return false;
         if (ui.page == PageId::Chop || ui.page == PageId::LayersPage) return true;
@@ -70,7 +78,7 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
             if (stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == StageKind::Trim && !stage_instrument(project, tr)
                 && tr.pads[tr.last_pad % sampler_pads].used()) return true;
         }
-        return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch || ui.page == PageId::Patterns || ui.page == PageId::Scenes || ui.page == PageId::StepEdit || ui.page == PageId::ModPage; // Merge; COPY on Tracks; QUANTIZE on Pad FX; VARY on Patterns; ALL on Scenes; INSERT on Step Edit; ADD on MOD and MACRO
+        return (ui.page == PageId::Chop && kit) || ui.page == PageId::Punch || ui.page == PageId::Patterns || ui.page == PageId::Scenes || ui.page == PageId::StepEdit || ui.page == PageId::ModPage; // Merge; QUANTIZE on Pad FX; VARY on Patterns; ALL on Scenes; INSERT on Step Edit; ADD on MOD and MACRO
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: // Copy: what the page holds (shell/erase_copy.h), or off
         return ui.copying != UiState::Copying::Off || copy_here(project, ui, kit_pads, key_pads) != CopyHere::None;

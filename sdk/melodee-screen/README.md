@@ -5,6 +5,8 @@ A plug-in draws its own page on the MPC Sample's screen in Melodee, with its
 own code. Everything here is MIT licensed (LICENSE): copy it into a plug-in.
 
 - `melodee_screen.h`: the format, plain C, for CLAP and VST2 plug-ins.
+- `melodee_companion.h`: a screen installed apart from the plug-in, for a
+  plug-in as it is released ([docs/PLUGIN_COMPANIONS.md](../../docs/PLUGIN_COMPANIONS.md)).
 - `example/`: Screen Example, a drive effect that draws its page and its
   strip; one source, one library with both entry points.
 - The reference: [docs/PLUGIN_SCREENS.md](../../docs/PLUGIN_SCREENS.md).

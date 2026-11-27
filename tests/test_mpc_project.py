@@ -118,8 +118,8 @@ class MpcProject(unittest.TestCase):
         self.assertIn("pad A01 file=Kick start=10 end=90 level=100 pan=0 pitch=0 play=1 mono=1 group=2 filter=Off", out)
         # 22.05 kHz frames double at the model's 44.1 kHz; 48/127 is -10.9 dB
         self.assertIn("pad A02 file=Snare start=20 end=80 level=51 pan=0 pitch=0 play=0 mono=1 group=0 filter=LPF4 cutoff=50", out)
-        self.assertIn("pattern 0 1 length=768 notes=2 first=0:36:127", out)
-        self.assertIn("pattern 0 0 length=768 notes=1 first=0:37:127", out)
+        self.assertIn("pattern 0 1 length=7680 notes=2 first=0:36:127", out)
+        self.assertIn("pattern 0 0 length=7680 notes=1 first=0:37:127", out)
 
     def test_song(self):
         # The first song with steps becomes Song: a clip a step on tracks with notes, a marker a step, and the tempo
@@ -168,7 +168,7 @@ class MpcProject(unittest.TestCase):
         out = result.stdout
         self.assertIn("track 1 name=Keys level=100 pan=0 mute=0 pattern=1 engine=9", out)
         self.assertIn("keygroup zones=2", out)
-        self.assertIn("pattern 1 1 length=768 notes=2 first=0:64:127", out)
+        self.assertIn("pattern 1 1 length=7680 notes=2 first=0:64:127", out)
 
     def test_wav_slices(self):
         # A sample chopped on the MPC keeps its slices in the WAV: they open as the file's chop (Manual), each slice its

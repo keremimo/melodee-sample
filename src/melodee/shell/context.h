@@ -191,7 +191,7 @@ public:
     void half_speed();        // Shift + Pad 6: every note twice as far apart (what falls past the end goes)
     void double_speed();      // Shift + Pad 7: every note half as far apart
     void time_correct();      // Time Correct's B3: the chosen notes onto Q, swung and shifted; one undo
-    void toggle_reverse();    // Shift + Loop: the last pad's reverse
+    void toggle_reverse();    // Shift + Loop: the last pad's reverse (on Chop, the slice in hand's)
     // Sample Mode jobs on the last pad hit (parity phase 4, shell/sample_mode.cpp).
     void toggle_loop();       // Loop
     void toggle_note_on();    // Shift + Chop: Note On (Gate) or One shot
@@ -203,7 +203,7 @@ public:
     bool restore_chop();      // the sample's chop (its WAV's slices, or changed here), whatever the pad's region; false: none
     void layer_load();        // Shift + B1 on Layers (roadmap P3): Samples, its Push onto the layer in hand
     void layer_clear();       // Shift + B2 on Layers: the layer in hand (2-4) taken off the pad
-    void load_layer(const std::string& path, const std::string& name); // Push on Samples opened by layer_load()
+    void load_layer(const std::string& path, const std::string& name, uint32_t start = 0, uint32_t end = 0); // Push on Samples opened by layer_load()
     void toggle_warp_mode();  // Shift + Pad 15: Warp by Time stretch or Pitch (the kit's Follow how)
     void set_recording(bool on); // a take begins; when it ends it goes into the history
     void seq_record();           // Seq Record: stopped, arm (Play starts the take); playing, record at once; recording, stop recording
@@ -211,6 +211,14 @@ public:
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);
+    // The mixer's channels by strip number (shell/mixer_channels.h): a track's, a submix's or (mute only) a bus's.
+    void set_channel_mute(unsigned strip, bool on);
+    void set_channel_solo(unsigned strip, bool on);
+    // The mixer's channel in hand's effect chain page (Shift + Knob FX there; Push on its FX block's plus with
+    // `picker`: the picker open on the chain's free slot). The input's: Input Config, it has no chain.
+    void open_mixer_chain(bool picker);
+    // The effect picker closed (an effect added, a plug-in picked or backed out of): from the mixer's plus, the mixer.
+    void picker_done();
     // Steps
     void set_step(unsigned track, unsigned step, const Step& value);
     // The pattern's notes changed in the model: the audio thread gets a copy to play.
@@ -225,7 +233,11 @@ public:
     // Roadmap P1: Motion is each pattern's own. A pot turned with a step (Steps) or a note (Roll, a pad held on it)
     // held writes a lock there: `lane` holds `value` from `tick` for `hold` ticks. Recorded moves reach the audio
     // thread at most every motion_sync_ms (a pattern copy each), flush_motion() sending the last when it is due.
-    void write_lock(int lane, uint32_t tick, uint16_t hold, int value);
+    void write_lock(int lane, uint32_t tick, uint32_t hold, int value);
+    // Erase + pot on a lock card (Binding::Kind::Lock): that lane's lock on the held step or note (or the caret's step
+    // on LOCK) out, its notes kept, in the same undo step as a turn. False when it held none ("No lock on ..." when
+    // `say_none`).
+    bool clear_lock(const Binding& b, bool say_none);
     void sync_motion(unsigned track, unsigned pattern);
     void flush_motion();
     void take_arp_notes(); // Seq Record: the arp's (Note Repeat's) notes as they played, into their patterns
@@ -237,6 +249,8 @@ public:
     void set_euclid(Binding::Kind kind, int value);
     // A track's playback speed (roadmap P1, model/pattern.h speeds): its patterns sent again, scaled (shell/feel_jobs.cpp).
     void set_speed(unsigned track, int speed);
+    void set_direction(unsigned track, unsigned direction); // Elektron's per track direction (model/step_order.h)
+    void cycle_direction();                                 // Shift + Loop on Patterns: FWD, REV, RND in turn
     void vary(Variation v);
     static constexpr uint32_t motion_sync_ms = 40;
     int motion_waiting = -1;  // track << 8 | pattern whose recorded motion the audio thread has not had yet
@@ -287,7 +301,7 @@ public:
     void live_erase_release(unsigned pad);
     void live_erase_tick(); // each frame: the notes passed since the last one
     void live_erase_end();
-    void copy_pad(unsigned from, unsigned to);               // Shift + Erase, pad, pad: sound and effects
+    void copy_pad(unsigned from_track, unsigned from, unsigned to); // Shift + Erase, pad, pad: sound and effects, onto the selected track
     void restore_pattern(unsigned track, unsigned pattern, const Pattern& value);
     void restore_pad(unsigned track, unsigned kit, const PadState& value);
     void send_trims(unsigned track, unsigned kit); // round 3 "instrument C": the pad's zone trims, afresh
@@ -334,6 +348,8 @@ public:
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
     void follow_to_column();                          // and onto the pattern every other track is on, one undo
     void capture_scene(unsigned scene);               // CAPTURE: what every track is on kept in the sequence, one undo
+    void copy_scene(unsigned from, unsigned to);      // Shift + Erase on Sequences: `to` a copy, its patterns copied; one undo
+    void keep_mute(unsigned track, bool on);          // a mute by hand, kept in the sequence in hand (not while the song plays)
     void follow_tick();                               // MIDI thread, often: chains told, what came followed
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};
@@ -361,15 +377,19 @@ public:
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
+    void pick_plugin_program(unsigned entry, int program); // a program by its number in the plug-in (a companion's pick)
+    void companion_requests(); // what companion screens asked for, made here (plugin/companion_screen.h)
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
+    bool plugin_screen_key(ScreenKey key); // MUTE or ERASE tapped: to the plug-in's own page when it takes the key; false: Melodee's job
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;
-    bool plugin_came_back = true; // false after going up, until the cursor lands on the folder it came out of
+    unsigned plugin_card_seen = 0; // the web page's changes to the card the picker has listed again for
+    bool plugin_came_back = true; // false after going up (or a web page change), until the cursor lands on the row asked for
     // Prints (freeze plan F2a, shell/print_jobs.cpp): the engine (set by the app), the project's prints (PRNT, saved
     // and loaded with it), patterns of one track to print (a bit each; none: the one it plays), and their results
     // taken in, often, from the shell's tick.
@@ -509,7 +529,15 @@ public:
     // The browsers keep their place: each drive's folder and row (Samples by Drive; Project 0 the card, 1 internal),
     // so B2 there and back, or leaving and coming back, lands where it was.
     struct BrowserPlace { std::string folder; uint16_t row = 0; bool set = false; };
-    std::array<BrowserPlace, 2> files_places {}, project_places {};
+    // The sample browser's places: where it was left for each kind of track it is opened for (a kit, a keygroup, an
+    // audio track, anything else) on each drive, and the drive; one never browsed for starts at the card's top.
+    static constexpr unsigned browse_kinds = 4;
+    std::array<std::array<BrowserPlace, 2>, browse_kinds> files_places {};
+    std::array<uint8_t, browse_kinds> files_drives {};
+    int files_kind = -1;             // whose place the browser shows; -1 none yet
+    unsigned browse_kind() const;    // the selected track's
+    void browse_for_track();         // Samples opened: the selected track's kind's place
+    std::array<BrowserPlace, 2> project_places {};
     int files_row_wanted = -1;        // Samples: the row to land on once the folder asked for lists
     std::string project_row_path;     // Project: the entry to land on once the folder lists (the open project, at first)
     std::string delete_path;          // Erase in a browser (shell/delete_jobs.h): what the question on screen would delete
@@ -517,6 +545,13 @@ public:
     bool project_list_opened = false; // the list has been opened since start
     bool dirty = false;               // changed since it was saved or loaded
     uint32_t sent = 0;                // commands sent to the audio thread so far (the usage log: did a press do anything)
+    // Moves whenever a kit (a track's pads, their chains, its zone trims) or a pattern may have changed: with every
+    // control and MIDI message that reaches the shell (Shell::surface() and its like), and where a change is told to
+    // the audio thread (send()'s edits, sync_pattern(), sync_motion(), a track sent whole, a project switched to),
+    // which is how changes that arrive asynchronously land (a sample loaded, an arp's notes recorded). The screen
+    // copies the kits and rebuilds the pattern sketches only when it has moved (Shell::snapshot()). MIDI thread,
+    // under the shell's lock.
+    uint64_t heavy_serial = 1;
     bool import_unsaved = false;      // an MPC project just opened, with no file of its own: saved by hand (SAVE AS), never in the background
     void save_project_to(const std::string& path);
     bool autosave(); // background save (shell/autosave.h): false with no card
@@ -581,12 +616,13 @@ public:
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load
     void rechop();                                                     // Chop's slices from its type and amount
     Slices type_chop(bool* capped = nullptr) const;                    // what the type and amount cut now (no hand cuts)
-    void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
-    // Issue 24, slice hits (model/slice_hits.h). Chop's pads while Seq Record runs: the slice played through its pad and
-    // written as the pad's note with the slice's number; let go, as long as it was held. False: not recording (or no
-    // pad of the track holds Chop's sample), the pad auditions as ever.
+    void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (a slice through its kit pad, or Manual's taps)
+    // Issue 24, slice hits (model/slice_hits.h). Chop's pads: the slice played through its kit pad (all the pad has, and
+    // the slice's own Reverse); while Seq Record runs also written as the pad's note with the slice's number; let go,
+    // as long as it was held. False: no pad of the track holds Chop's sample (the pad auditions the file instead).
     bool slice_hit(unsigned pad, unsigned slice, uint8_t velocity);
     void slice_release(unsigned pad);
+    void reverse_slice();                                              // Shift + Loop on Chop: the slice in hand's own Reverse
     std::array<int32_t, 16> chop_held {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}; // each pad's slice hit, held
     int chop_kit_pad() const;                                          // the kit pad slice hits on Chop's sample play (-1 none)
     const Slices& live_chop(unsigned sample) const;                      // a sample's chop as slice hits play it: Chop's own while it holds it
@@ -662,6 +698,15 @@ public:
     void render_tick(uint32_t at);                        // a render ended: transport back as it was
     bool render_started = false;
     uint32_t render_since = 0;
+    // Pad stems (shell/render.cpp): STEMS writes each kit pad the song plays apart too, in a folder of its kit's. The
+    // pads past what one pass of the song can write wait for later passes: `stem_pass` of `stem_passes` (0: no stems).
+    struct PadStem { uint8_t track = 0, pad = 0; std::array<char, 72> path {}; };
+    std::vector<PadStem> stem_pads;
+    unsigned stem_pads_taken = 0, stem_pass = 0, stem_passes = 0;
+    std::string stem_name;
+    void song_pad_stems();
+    unsigned stems_a_pass() const; // the stems one pass of the song writes, the mix counted
+    bool next_stem_pass(uint32_t now);
     // Song -> new pattern (parity phase 6, shell/song_export.cpp): the song's clips as one long pattern on every track, one undo.
     void song_to_pattern();
     void song_export_soft(int key);                       // the export sheet's B1 Cancel, B2 Audio mixdown, B3 New pattern
@@ -670,7 +715,8 @@ public:
     void trim_sample();                                  // Shift + Pad 13: the last pad's region as a file of its own, one undo
     void extract_slice();                                // Chop, Shift + B1: the slice as a file, onto the next empty pad
     void save_sample_as(const std::string& name);        // Save Sample's Name sheet, Done: the region as Samples/<name>.wav
-    void load_file(const std::string& path, const std::string& name, bool next_empty); // the browser's Push, Shift + pad
+    // The browser's Push, Shift + pad; `start`, `end` (frames, end 0 the file's end): the trim sheet's, onto the pad.
+    void load_file(const std::string& path, const std::string& name, bool next_empty, uint32_t start = 0, uint32_t end = 0);
     void files_landed();                                 // the library changed: made files onto their pads
     int next_empty_pad(unsigned after) const;            // the kit's next pad without a sample after `after`, -1 none
     // The browser (Samples): the file under the cursor heard when B3 is on;
@@ -683,6 +729,19 @@ public:
     std::string files_folder_seen;
     unsigned previews_seen = 0;
     int previewing = -1; // the track a preview plays on, -1 none
+    // Samples' trim sheet (shell/browse_trim.h, UiState::browse): K2 / K3 on an audio file read it into a slot and raise
+    // the sheet (`focus` the handle turned); B1, a move to another file or leaving the page lower it, the slot freed
+    // when nothing plays it; Erase alone puts both ends back. browse_tick: the kept part heard once a moved end is still,
+    // and the sheet down once its file is no longer under the cursor.
+    bool browse_open(unsigned focus);
+    void browse_close();
+    void browse_erase(int handle); // -1 both
+    void browse_tick(uint32_t ms);
+    std::string browse_path; // the file the sheet trims
+    uint16_t browse_cursor = 0;         // the row it was looked up at
+    unsigned browse_generation = 0;     // and the library's list then
+    uint16_t audio_cursor = 0xffff;     // UiState::files_audio: the row it was worked out for
+    unsigned audio_generation = ~0u;
     // Settings > SEQ > Note preview (shell/note_preview.h): `events` of the selected track's pattern heard once, the
     // earliest of them (a chord), each as long as the sequencer holds it; `settle`: once the wheel has rested. What
     // still sounds of the last preview ends first. Nothing while the setting is off.

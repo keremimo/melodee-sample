@@ -39,6 +39,7 @@ To save only when you choose, turn **Autosave** off in
 
 - **B1** reads **SAVE** and writes the project to its file. A project
   with no file yet still gets **SAVE AS**.
+- **SHIFT** + **B1** (**SAVE AS**) saves it under a new name.
 - To go back to what was last saved, open the list, push the open project
   and pick **REVERT** (**TO SAVED**). Push it again to confirm.
 - **NEW**, **LOAD** of another project and the Exit screen don't save.
@@ -65,7 +66,8 @@ In the list:
   **Autosave**, and the factory **Demos** and **Kits**. It is read only:
   its projects have Load and Load kit.
 - The list opens on the open project the first time, then where you left
-  it. Each drive keeps its own folder and row.
+  it. A project not yet saved on the card opens it at the card's top. Each
+  drive keeps its own folder and row.
 - Push the encoder or press **B3** on a project to open its sheet. Its jobs
   are cards. The open project has Save, Save as new, Rename, Duplicate,
   Move to folder, New folder here, Open at start and Delete. Another
@@ -145,6 +147,25 @@ taking it out.
 5. Press **B1** (**EJECT**). Melodee reads the card again.
 
 ![SD card access](../images/screens/cardaccess.png)
+
+## File sharing
+
+While Melodee runs, a computer connected with USB-C can also open the card
+as a network drive. Melodee keeps working and keeps the card.
+
+1. Connect the MPC to the computer with a USB-C cable.
+2. On a Mac, choose **Melodee** under **Network** in the Finder sidebar,
+   or choose **Go** > **Connect to Server** and enter
+   **smb://melodee.local**. On Windows, open `\\192.168.155.1` in File
+   Explorer.
+3. Connect as **Guest**, or enter any name with an empty password.
+4. Open **SD Card**. Copy your files.
+5. Eject **SD Card** on the computer when you are done.
+
+File sharing is on until you turn it off in **SETTINGS** > **AUDIO** >
+**File sharing**. While the computer has **SD Card** open, SD card access
+does not start; eject it on the computer first. File sharing needs MPC
+firmware 1.3.0.12; on firmware 1.4 it does not start.
 
 While the card is mounted on the computer, the pads still play the selected
 track, and **PLAY**, **STOP** and **MAIN VOLUME** still work. The other

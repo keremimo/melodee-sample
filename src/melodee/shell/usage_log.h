@@ -27,7 +27,7 @@ inline const char* usage_page_name(PageId page) {
         "Master", "Pads", "Samples", "Trim", "Chop", "Record", "Project", "Tempo", "Pad", "Play", "Envelope", "Filter",
         "Follow", "Cloud", "Punch", "Settings", "System", "PadFx", "TimeCorrect", "StepEdit", "PadMix", "PadFilter",
         "FilterEnv", "KnobFx", "Compressor", "FlexBeat", "Fader", "MidiConfig", "CardAccess", "Tracks", "Looper",
-        "Plugins", "PluginPresets", "Layers", "Mod", "Print", "Scenes", "AutoSample", "Stems"};
+        "Plugins", "PluginPresets", "Layers", "Mod", "Print", "Scenes", "AutoSample", "Stems", "Mixer"};
     static_assert(sizeof(names) / sizeof(names[0]) == size_t(PageId::Count), "a name for every page");
     return unsigned(page) < unsigned(PageId::Count) ? names[unsigned(page)] : "None";
 }

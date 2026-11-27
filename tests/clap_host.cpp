@@ -143,6 +143,11 @@ int main(int argc, char** argv) {
         CHECK(sine->screenDraw(frame, changed) && changed && pixels[190] == 0xff8000u);
         melodee_screen_input_t step {MELODEE_SCREEN_STEP, 1, 0};
         CHECK(sine->screenInput(step, used) && !used); // Minus / Plus are not its
+        // The printed buttons its page takes: none until it says (melodee.screen-host/2), then Erase, then none again.
+        CHECK(sine->screenKeys() == 0);
+        melodee_screen_input_t push {MELODEE_SCREEN_PUSH, 1, 0}, erase {MELODEE_SCREEN_ERASE, 1, 0};
+        CHECK(sine->screenInput(push, used) && used && sine->screenKeys() == MELODEE_SCREEN_KEY_ERASE);
+        CHECK(sine->screenInput(erase, used) && used && sine->screenKeys() == 0);
         std::array<int, 3> controls {};
         CHECK(sine->screenControls(controls) && controls[0] == 0 && controls[1] == 1 && controls[2] == -1); // Level, Wave
         run(*sine);
@@ -232,6 +237,18 @@ int main(int argc, char** argv) {
         if (!gain) return 1;
         auto its = gain->findPresets({}); // no cache: every file read
         CHECK(its.size() == 2 && its[0].name == "Loud" && its[1].name == "Soft");
+        gain->prepareToPlay(rate, block);
+        gain->setPresets(its);
+        double seconds = -1;
+        CHECK(gain->getTailLengthSeconds() == 0 && !gain->takeTailChange(seconds));
+        gain->setCurrentProgram(0);
+        CHECK(gain->wantsProcess());
+        run(*gain);
+        CHECK(gain->takeTailChange(seconds) && seconds == 2);
+        CHECK(!gain->takeTailChange(seconds));
+        gain->setCurrentProgram(1);
+        run(*gain);
+        CHECK(gain->takeTailChange(seconds) && seconds == 0);
     }
     CHECK(ClapInstance::load(file, 12345, rate, block, error) == nullptr && error == "No longer in its library");
 

@@ -7,6 +7,7 @@
 #include "melodee/shell/roll.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/undo_scope.h"
 #include <string>
 #include <algorithm>
@@ -156,7 +157,7 @@ void set_event_velocity(Context& c, int velocity) {
 
 void set_event_length(Context& c, int steps) {
     const int64_t q = c.pattern().q();
-    edit_selected(c, [&](Event& e) { e.length = uint16_t(std::clamp<int64_t>(int64_t(std::max(steps, 1)) * q, 1, 0xffff)); });
+    edit_selected(c, [&](Event& e) { e.length = note_ticks(uint64_t(std::max(steps, 1)) * q); });
 }
 
 void set_event_chance(Context& c, int chance) {
@@ -247,7 +248,7 @@ void entry_write(Context& c, int key, const Level& level, uint8_t velocity) {
     e.pitch = int8_t(std::clamp(level.semitones, -48, 48));
     if (level.cutoff >= 0) e.cutoff = uint8_t(std::min(level.cutoff, 100) + 1);
     e.velocity = ui.entry_velocity ? ui.entry_velocity : level.velocity ? uint8_t(level.velocity) : std::max<uint8_t>(velocity, 1);
-    e.length = uint16_t(std::min<uint32_t>({uint32_t(ui.entry_length) * q, p.length, 65535u}));
+    e.length = note_ticks(std::min<uint32_t>(uint32_t(ui.entry_length) * q, p.length));
     e.chance = ui.entry_chance;
     p.add(e); // a note of the same key already there is replaced
     c.sync_pattern(ui.track, c.track().pattern);
@@ -390,6 +391,162 @@ void erase_key_events(Context& c, int key) {
     c.ui.step_event = 0;
     if (key_is_pad(c.track(), key)) c.notice(found ? "Cleared all events from Pad " + name : std::string("No events in this pad")); // the stock MPC's words
     else c.notice(found ? what : "No events on " + name);
+}
+
+// ---- Step SOUND's sounds on the pads
+namespace {
+// The step's notes (on a kit its lane's) changed by `change`, as one undo step, the audio thread told.
+template <class Change> bool edit_sound(Context& c, const char* what, Change&& change) {
+    auto& ui = c.ui;
+    const unsigned st = sound_step(ui, c.pattern());
+    const int lane = steps_lane(c.track());
+    bool any = false;
+    c.edit_pattern(ui.track, c.track().pattern, what, [&] {
+        any = edit_lane(c.pattern(), st, lane, change);
+        if (any) c.pattern().sort(); // a note's slice is part of where it sorts
+    });
+    if (any) c.sync_pattern(ui.track, c.track().pattern);
+    return any;
+}
+// The step's first note (its lane's on a kit), or none.
+const Event* sound_note(Context& c) {
+    const int n = lane_event(c.pattern(), sound_step(c.ui, c.pattern()), steps_lane(c.track()));
+    return n < 0 ? nullptr : &c.pattern().events[size_t(n)];
+}
+// The step's pad's own sample (a kit's lane, a keygroup's one), no_sample none.
+uint16_t own_sample(const Track& t, const Event& e) {
+    if (t.engine == EngineKind::Keygroup) return t.pads[0].sample;
+    if (t.engine == EngineKind::Sampler && e.key >= sampler_first_note && e.key - sampler_first_note < sampler_pads) return t.pads[e.key - sampler_first_note].sample;
+    return no_sample;
+}
+// What the step plays now heard once: its sample (or `slot`), the slice it has, the way it plays.
+void hear_sound(Context& c, const Event& e) {
+    const auto& t = c.track();
+    const unsigned slot = e.sample ? e.sample - 1u : own_sample(t, e);
+    if (slot >= sample_slots) return;
+    Command a {Command::Type::Audition, c.ui.track, 0, 0, int16_t(c.ui.audition_velocity)};
+    a.pad.sample = uint16_t(slot);
+    const auto& chop = c.project.chops[slot].slices;
+    if (e.slice && e.slice != slice_random && e.slice <= chop.count) { a.pad.start = chop.start[e.slice - 1u]; a.pad.end = chop.stop[e.slice - 1u]; }
+    const auto play = step_play(e.flags);
+    const bool pad_reverse = t.engine == EngineKind::Sampler && e.key >= sampler_first_note && t.pads[(e.key - sampler_first_note) % sampler_pads].reverse;
+    a.pad.reverse = play == StepPlay::Reverse || (play == StepPlay::Pad && pad_reverse);
+    c.send(a);
+}
+// The track and bank the pads show: where `sample` (Event::sample) sits, else the step's own pad.
+void show_sound(Context& c, const Event& e) {
+    auto& ui = c.ui;
+    const auto choices = step_sound_choices(c.project);
+    const int k = step_sound_index(choices, e.sample);
+    if (k > 0) { ui.sounds_track = choices[size_t(k - 1)].track; ui.sounds_bank = uint8_t(choices[size_t(k - 1)].pad / 16); return; }
+    ui.sounds_track = ui.track;
+    ui.sounds_bank = c.track().engine == EngineKind::Sampler && e.key >= sampler_first_note ? uint8_t((e.key - sampler_first_note) / 16 % sampler_banks) : 0;
+}
+// `sample` for the step (its own pad's: none of its own); a slice past the new chop's end back to the pad's region.
+void give_sample(Context& c, uint16_t slot) {
+    const auto& t = c.track();
+    edit_sound(c, "Step sound", [&](Event& e) {
+        const uint16_t sample = slot == own_sample(t, e) ? uint16_t(0) : uint16_t(slot + 1);
+        if (e.sample != sample && e.slice != slice_random && e.slice > step_sound_slices(c.project, t, e.key, sample)) e.slice = 0;
+        e.sample = sample;
+    });
+}
+} // namespace
+
+bool sounds_select(Context& c) {
+    auto& ui = c.ui;
+    if (ui.page != PageId::StepEdit) return false;
+    if (sounds_open(ui)) { sounds_close(c); return true; }
+    const auto& t = c.track();
+    if (!sound_steps(t)) return false;
+    const bool held = ui.held_step >= 0;
+    if (!held && step_set(t, ui.step_cards) != cards_sound) return false; // the sample browser, as ever
+    const auto& p = c.pattern();
+    const unsigned st = unsigned(held ? ui.held_step : std::max<int>(ui.step_cursor, 0)) % p.steps();
+    const int n = lane_event(p, st, steps_lane(t));
+    if (n < 0) { c.notice("No note on step " + std::to_string(st + 1)); return true; }
+    ui.sounds_step = int16_t(st); ui.sounds_for = ui.track; ui.sounds_slices = false;
+    ui.step_cards = cards_sound;
+    ui.held_step = -1; // the pads are the sounds now: letting the step's pad go keeps the step as it is
+    show_sound(c, p.events[size_t(n)]);
+    return true;
+}
+
+void sounds_close(Context& c) { c.ui.sounds_step = -1; c.ui.sounds_slices = false; }
+
+void sounds_pad(Context& c, unsigned pad) {
+    auto& ui = c.ui;
+    const Event* e = sound_note(c);
+    if (!e) return;
+    const auto& t = c.track();
+    if (ui.sounds_slices) { // SLICES: the step's sample's slice on that pad
+        const unsigned slices = step_sound_slices(c.project, t, e->key, e->sample), n = ui.sounds_bank % sampler_banks * 16u + pad % 16;
+        if (n >= slices) return;
+        edit_sound(c, "Step slice", [&](Event& x) { x.slice = uint8_t(n + 1); });
+        if (const Event* now = sound_note(c)) hear_sound(c, *now);
+        return;
+    }
+    const auto& source = c.project.tracks[ui.sounds_track % track_count];
+    if (source.engine != EngineKind::Sampler && source.engine != EngineKind::Keygroup) return;
+    if (source.engine == EngineKind::Keygroup && (pad % 16 || ui.sounds_bank)) return; // a keygroup's one sample: pad 1
+    const auto& sound = source.pads[source.engine == EngineKind::Keygroup ? 0 : ui.sounds_bank % sampler_banks * 16u + pad % 16];
+    if (!sound.used() || sound.sample >= sample_slots) return;
+    give_sample(c, sound.sample);
+    if (const Event* now = sound_note(c)) hear_sound(c, *now);
+}
+
+void sounds_track_step(Context& c, int way) {
+    auto& ui = c.ui;
+    for (unsigned k = 1; k <= track_count; ++k) { // the next track with a sample on a pad
+        const unsigned t = unsigned((int(ui.sounds_track) + (way > 0 ? int(k) : -int(k)) + 2 * int(track_count)) % int(track_count));
+        const auto& tr = c.project.tracks[t];
+        if (tr.engine != EngineKind::Sampler && tr.engine != EngineKind::Keygroup) continue;
+        bool any = false;
+        for (const auto& pad : tr.pads) any |= pad.used();
+        if (!any) continue;
+        ui.sounds_track = uint8_t(t); ui.sounds_bank = 0; ui.sounds_slices = false;
+        return;
+    }
+}
+
+void sounds_bank_step(Context& c, int way) {
+    auto& ui = c.ui;
+    unsigned banks = sampler_banks;
+    if (ui.sounds_slices) {
+        const Event* e = sound_note(c);
+        const unsigned slices = e ? step_sound_slices(c.project, c.track(), e->key, e->sample) : 0;
+        banks = std::clamp((slices + 15) / 16, 1u, sampler_banks);
+    } else if (c.project.tracks[ui.sounds_track % track_count].engine == EngineKind::Keygroup) banks = 1;
+    ui.sounds_bank = uint8_t((ui.sounds_bank % banks + banks + unsigned(way % int(banks))) % banks);
+}
+
+void sounds_walk(Context& c, int way) {
+    const Event* e = sound_note(c);
+    if (!e || !way) return;
+    const auto choices = step_sound_choices(c.project);
+    const auto& t = c.track();
+    int at = step_sound_index(choices, e->sample);
+    if (at == 0) at = step_sound_index(choices, uint16_t(own_sample(t, *e) + 1)); // the pad's own sample's place
+    const int next = std::clamp(std::max(at, 0) + way, 1, int(choices.size()));
+    if (next < 1 || next == at) return;
+    give_sample(c, choices[size_t(next - 1)].slot);
+    if (const Event* now = sound_note(c)) { show_sound(c, *now); hear_sound(c, *now); }
+}
+
+void sounds_clear(Context& c) {
+    if (edit_sound(c, "Step sound", [](Event& e) { e.sample = 0; e.slice = 0; e.flags = with_play(e.flags, StepPlay::Pad); }))
+        c.notice("Step plays its pad");
+    if (const Event* e = sound_note(c)) show_sound(c, *e);
+}
+
+void sounds_slices(Context& c) {
+    auto& ui = c.ui;
+    const Event* e = sound_note(c);
+    if (!e) return;
+    if (!ui.sounds_slices && !step_sound_slices(c.project, c.track(), e->key, e->sample)) { c.notice("No slices in this sample"); return; }
+    ui.sounds_slices = !ui.sounds_slices;
+    ui.sounds_bank = 0;
+    if (!ui.sounds_slices) show_sound(c, *e);
 }
 
 } // namespace melodee

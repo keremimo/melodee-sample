@@ -70,6 +70,7 @@ public:
     void releaseResources() override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     double getTailLengthSeconds() const override;
+    bool takeTailChange (double& seconds); // audio thread, before the rack decides whether to sleep
     bool acceptsMidi() const override { return notePort >= 0; }
     bool producesMidi() const override { return false; }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -109,6 +110,7 @@ public:
     bool screenInput (const melodee_screen_input& input, bool& used) override;
     bool screenControls (std::array<int, 3>& indices) override;
     bool takeRedraw() override;
+    uint32_t screenKeys() const override;
     int getNumPrograms() override;                      // its presets (1 with none, as JUCE has it)
     int getCurrentProgram() override;                   // the one loaded here last (0 none yet)
     void setCurrentProgram (int) override;              // loads that preset, again if it is the one loaded
@@ -131,6 +133,7 @@ private:
                   bool clapNotes, bool midiNotes, double rate, int block);
     void readParameters();          // main thread, under `mainLock`
     void refreshValues();           // main thread, under `mainLock`: every cached value from the plug-in
+    double readTailSeconds() const; // CLAP permits this query on the main or audio thread
     void readLatency();             // main thread, under `mainLock`
     void stopProcessing();          // main thread, the audio thread no longer running it
     static bool pushOut (const clap_output_events*, const clap_event_header*);
@@ -149,7 +152,7 @@ private:
     juce::File file;
     Info info;
     juce::String name;
-    std::recursive_mutex mainLock;
+    mutable std::recursive_mutex mainLock;
     bool active = false, processing = false;
     double rate;
     int block;

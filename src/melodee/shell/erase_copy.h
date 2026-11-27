@@ -2,8 +2,10 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/project.h"
+#include "melodee/plugin/plugin_screen.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/ui_state.h"
+#include "melodee/shell/mixer_channels.h"
 
 // Erase and Copy (Shift + Erase) on whatever the page in view holds.
 //
@@ -19,16 +21,18 @@
 //
 // Shift + Erase copies what the page holds. Pad Bank held: tracks; Seq
 // held: patterns. Then by page: Tracks the tracks, Patterns the patterns,
-// Steps a step, Roll and Step Edit a key's notes, Song the clip (after
-// itself), Project the project, a chain the effect (after itself), Chop the
-// slice (onto the next empty pad). Else a kit's pads, or a synth's keys.
+// Sequences a sequence (its patterns copied: model/scene_links.h
+// copy_scene_links), Steps a step, Roll and Step Edit a key's notes, Song the
+// clip (after itself), Project the project, a chain the effect (after itself),
+// Chop the slice (onto the next empty pad). Else a kit's pads, or a synth's
+// keys.
 namespace melodee {
 
 class Context;
 
-// What Shift + Erase copies here. The first five arm a copy (the source, then
+// What Shift + Erase copies here. The first six arm a copy (the source, then
 // where); the rest copy at once.
-enum class CopyHere : uint8_t { None, Pads, Patterns, Tracks, Keys, Steps, Clip, Project, Effect, Slice };
+enum class CopyHere : uint8_t { None, Pads, Patterns, Tracks, Keys, Steps, Scenes, Clip, Project, Effect, Slice };
 
 // `kit_pads`: the pads play the selected kit (Shell::kit_pads); `key_pads`: they play a synth's keys (Shell::key_pads).
 inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pads, bool key_pads) {
@@ -36,14 +40,17 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
     if (ui.seq_held) return CopyHere::Patterns;
     const auto& t = project.tracks[ui.track % track_count];
     switch (ui.page) {
-    case PageId::Tracks: return CopyHere::Tracks;
     case PageId::Patterns: return CopyHere::Patterns;
+    case PageId::Scenes: return ui.scene_capture ? CopyHere::None : CopyHere::Scenes;
     case PageId::StepEdit: return !t.used() ? CopyHere::None : ui.step_pads ? CopyHere::Steps : CopyHere::Keys; // the bar's steps, or keys
     case PageId::Roll: return t.used() ? CopyHere::Keys : CopyHere::None;
     case PageId::Song:
         if (ui.song_export) return CopyHere::None;
         return project.song.clip_at(ui.track % track_count, ui.song_cursor) >= 0 ? CopyHere::Clip : CopyHere::None;
     case PageId::Project: return ui.project_list && !ui.move_open ? CopyHere::Project : CopyHere::None;
+    case PageId::Mixer: // its FX block: the lit effect, as on its FX page
+        if (!mixer_fx_lit(ui)) return CopyHere::None;
+        [[fallthrough]];
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: {
         if (ui.picker_open) return CopyHere::None;
         unsigned n = page_chain(project, ui);
@@ -61,8 +68,10 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
 // Whether Erase tapped on its own has a job on the page in view (its light; the tap itself checks there is
 // something to erase and says so when there is not).
 inline bool erase_tap_page(const UiState& ui) {
+    if (ui.plugin_panel.screen && (ui.plugin_panel.screen_keys & screen_key_erase)) return true; // a plug-in's page that takes it
     switch (ui.page) {
-    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes: case PageId::Tracks:
+    case PageId::Mixer: return mixer_fx_lit(ui); // its FX block: the lit effect
+    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes:
     case PageId::Looper: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx:
     case PageId::Chop: case PageId::LayersPage: case PageId::ModPage:
     case PageId::Samples: case PageId::Plugins:
@@ -74,12 +83,16 @@ inline bool erase_tap_page(const UiState& ui) {
 
 // Erase let go on its own: the thing in focus erased, asked first where it says so. False when the page has none.
 bool erase_tap(Context& c);
+// Erase + pad on Tracks or the mixer's tracks: the selected track cleared, once B3 says so.
+void ask_clear_track(Context& c);
 // Shift + Erase with no copy under way: a copy armed, or done at once (copy_here()).
 void copy_press(Context& c, bool kit_pads, bool key_pads);
 // A pad while a key copy waits (Copying::Keys): the key to copy, then where.
 void key_copy_pad(Context& c, unsigned pad);
 // A pad on Steps while a step copy waits (Copying::Steps): the step to copy, then where.
 void step_copy_pad(Context& c, unsigned pad);
+// A pad on Sequences while a sequence copy waits (Copying::Scenes): the sequence to copy, then where.
+void scene_copy_pad(Context& c, unsigned pad);
 // Erase + Seq Record on a kit: every note of the selected pad (the 16 Levels pad under 16 Levels, else the last
 // pad) out of the pattern, once B3 says so. False when there is none to erase.
 bool erase_selected_pad(Context& c);

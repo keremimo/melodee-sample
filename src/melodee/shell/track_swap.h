@@ -84,12 +84,18 @@ inline SwapChanges swap_tracks(Project& project, PatternBank& patterns, unsigned
     if (k.pads[a] != k.pads[b]) { std::swap(k.pads[a], k.pads[b]); out.knob = true; }
     unsigned key = swapped(project.compressor.key, a, b);
     if (key != project.compressor.key) { project.compressor.key = uint8_t(key); out.key = true; }
-    for (unsigned n = 0; n < chain_count; ++n) // roadmap P4: a keyed Compressor or Gate follows its key track, in every chain
+    for (unsigned n = 0; n < mix_chain_count; ++n) // roadmap P4: a keyed Compressor or Gate follows its key track, in every chain
         for (auto& s : project.chain(n).slots)
             if (fx_key_is_track(s.key)) {
                 unsigned t = swapped(s.key - 1u, a, b);
                 if (t != s.key - 1u) { s.key = fx_key_track(t); out.fx_keys = true; }
             }
+    for (unsigned n = 0; n < strip_channels; ++n) { // and a mixer strip's compressor (model/strip.h comp_key)
+        auto& s = project.strip(n);
+        if (!fx_key_is_track(s.comp_key)) continue;
+        unsigned t = swapped(s.comp_key - 1u, a, b);
+        if (t != s.comp_key - 1u) { s.comp_key = uint8_t(fx_key_track(t)); out.fx_keys = true; }
+    }
     return out;
 }
 

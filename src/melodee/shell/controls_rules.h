@@ -15,15 +15,14 @@
 //   sends: the cards go SEND, BUS, RETURN from K1 (a kit's KIT SEND counts as SEND); not on Motion, whose cards
 //          are the lanes it holds, in lane order.
 //   seq:   a page of the SEQ hub keeps its row: B1 SEQUENCES or PATTERNS, B2 ROLL, B3 MOTION, MOD, MACRO or none.
-//   mix:   a page of the MIX hub keeps its row: B1 TRACKS, B2 SENDS or none (Basic), B3 FX (a loop's chain, reached
-//          from the Looper, has LOOPER instead).
+//   mix:   a page of the MIX hub keeps its row: B1 MIXER, B2 empty, B3 FX. Loop and submix chains have their own row.
 // The hub rows count only when nothing is over the page's own row (controls_overlay).
 namespace melodee {
 
 struct ControlsRow {
     PageId page = PageId::Stage;
     bool overlay = false; // controls_overlay(): a held key, Shift, a sheet, a question or the MENU over the page
-    bool loop_chain = false; // a Looper loop's chain on the Rack page, not the MIX hub's
+    bool loop_chain = false; // a Looper loop's chain (or a mixer submix's) on the Rack page, not the MIX hub's
     bool keys_drawn = true;  // the frame drew a soft-key row (a full-screen sheet may not): the hub rules need one
     std::array<std::string, 3> keys, knobs;
     std::array<bool, 3> back {};
@@ -42,7 +41,7 @@ inline bool controls_seq_hub(PageId page) {
     return page == PageId::Scenes || page == PageId::Patterns || page == PageId::Roll || page == PageId::Motion || page == PageId::ModPage;
 }
 inline bool controls_mix_hub(PageId page) {
-    return page == PageId::Tracks || page == PageId::Sends || page == PageId::Rack || page == PageId::Bus || page == PageId::Master
+    return page == PageId::Rack || page == PageId::Bus || page == PageId::Master
         || page == PageId::PadFx;
 }
 
@@ -51,7 +50,7 @@ inline ControlsRow controls_row(const UiState& ui) {
     ControlsRow row;
     row.page = ui.page;
     row.overlay = controls_overlay(ui);
-    row.loop_chain = ui.page == PageId::Rack && ui.fx_loop >= 0;
+    row.loop_chain = ui.page == PageId::Rack && (ui.fx_loop >= 0 || ui.fx_sub >= 0);
     return row;
 }
 
@@ -77,7 +76,7 @@ inline std::vector<std::string> controls_breaks(const ControlsRow& row) {
         && !(is(row.keys[0], {"SEQUENCES", "PATTERNS"}) && row.keys[1] == "ROLL" && is(row.keys[2], {"MOTION", "MOD", "MACRO", ""})))
         out.push_back("seq: " + row.keys[0] + " / " + row.keys[1] + " / " + row.keys[2]);
     if (!row.overlay && row.keys_drawn && !row.loop_chain && controls_mix_hub(row.page)
-        && !(row.keys[0] == "TRACKS" && is(row.keys[1], {"SENDS", ""}) && row.keys[2] == "FX"))
+        && !(row.keys[0] == "MIXER" && row.keys[1].empty() && row.keys[2] == "FX"))
         out.push_back("mix: " + row.keys[0] + " / " + row.keys[1] + " / " + row.keys[2]);
     return out;
 }

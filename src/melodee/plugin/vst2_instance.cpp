@@ -19,6 +19,12 @@ thread_local Vst2Instance* opening = nullptr;
 thread_local double openingRate = 0.0;
 thread_local int openingBlock = 0;
 
+// NODELETE: a plug-in with a static C++ runtime (zig's libc++) leaves exit handlers that crash Melodee once unmapped.
+void* openLibrary (const File& file)
+{
+    return dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
+}
+
 vst2::EntryPoint entryPointOf (void* library)
 {
     if (auto* main = dlsym (library, "VSTPluginMain"))
@@ -33,8 +39,6 @@ AudioChannelSet channelSet (int channels)
                          : AudioChannelSet::discreteChannels (channels);
 }
 
-constexpr char stateTag[4] = { 'M', 'V', 'S', '2' };
-constexpr uint8 stateChunk = 1, stateParameters = 2;
 } // namespace
 
 class Vst2Instance::Parameter final : public AudioPluginInstance::HostedParameter
@@ -77,7 +81,7 @@ AudioProcessor::BusesProperties Vst2Instance::busesOf (const vst2::Effect& effec
 
 bool Vst2Instance::exportsEntryPoint (const File& file, String& error)
 {
-    void* library = dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL);
+    void* library = openLibrary (file);
     if (library == nullptr)
     {
         error = dlerror();
@@ -92,7 +96,7 @@ bool Vst2Instance::exportsEntryPoint (const File& file, String& error)
 
 std::unique_ptr<Vst2Instance> Vst2Instance::load (const File& file, double rate, int block, String& error)
 {
-    void* library = dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL);
+    void* library = openLibrary (file);
     if (library == nullptr)
     {
         error = dlerror();
@@ -233,12 +237,16 @@ intptr_t Vst2Instance::hostCallback (vst2::Effect* effect, int32_t opcode, int32
         {
             const char* asked = (const char*) ptr;
             for (const char* yes : { "sendVstEvents", "sendVstMidiEvent", "sendVstTimeInfo", "receiveVstEvents", "receiveVstMidiEvent",
-                                     MELODEE_SCREEN_VST2_CANDO })
+                                     MELODEE_SCREEN_VST2_CANDO, MELODEE_SCREEN_VST2_KEYS_CANDO })
                 if (asked != nullptr && std::strcmp (asked, yes) == 0)
                     return 1;
             return 0;
         }
-        case vst2::host::vendorSpecific: // its own screen: a draw asked for, and maybe a block run (any thread)
+        case vst2::host::vendorSpecific: // its own screen: a draw asked for, and maybe a block run; the keys it takes (any thread)
+            if (index == MELODEE_SCREEN_VST2_KEYS && self != nullptr) {
+                self->keys.store (uint32_t (value), std::memory_order_release);
+                return 1;
+            }
             if (index != MELODEE_SCREEN_VST2 || self == nullptr) return 0;
             self->redraw.store (true, std::memory_order_release);
             if ((value & MELODEE_SCREEN_RUN) != 0) self->runAsked.store (true, std::memory_order_release);
@@ -383,22 +391,22 @@ const String Vst2Instance::getProgramName (int index)
     return String::fromUTF8 (text).trim();
 }
 
-// Saved as "MVS2", a kind byte, then the plug-in's own chunk or every
-// parameter's value as floats.
+// Saved as vst2::state (plugin/vst2_abi.h): "MVS2", a kind byte, then the
+// plug-in's own chunk or every parameter's value as floats.
 void Vst2Instance::getStateInformation (MemoryBlock& state)
 {
     state.reset();
-    state.append (stateTag, sizeof (stateTag));
+    state.append (vst2::state::tag, sizeof (vst2::state::tag));
     if ((effect->flags & vst2::flag::programChunks) != 0)
     {
         void* data = nullptr;
         const auto size = dispatch (vst2::op::getChunk, 0, 0, &data);
-        state.append (&stateChunk, 1);
+        state.append (&vst2::state::chunk, 1);
         if (data != nullptr && size > 0)
             state.append (data, (size_t) size);
         return;
     }
-    state.append (&stateParameters, 1);
+    state.append (&vst2::state::parameters, 1);
     for (int i = 0; i < effect->numParams; ++i)
     {
         const float value = effect->getParameter (effect, i);
@@ -408,17 +416,19 @@ void Vst2Instance::getStateInformation (MemoryBlock& state)
 
 void Vst2Instance::setStateInformation (const void* data, int size)
 {
-    if (size < 5 || std::memcmp (data, stateTag, sizeof (stateTag)) != 0)
+    if (size < 5 || std::memcmp (data, vst2::state::tag, sizeof (vst2::state::tag)) != 0)
         return;
     const auto* bytes = static_cast<const uint8*> (data);
     const auto kind = bytes[4];
     const auto* body = bytes + 5;
     const auto bodySize = size - 5;
-    if (kind == stateChunk)
+    if (kind == vst2::state::chunk || kind == vst2::state::programChunk) // a bank's chunk, or one program's (an MPC preset's)
     {
-        dispatch (vst2::op::setChunk, 0, bodySize, const_cast<uint8*> (body));
+        dispatch (vst2::op::setChunk, kind == vst2::state::programChunk ? 1 : 0, bodySize, const_cast<uint8*> (body));
         return;
     }
+    if (kind != vst2::state::parameters)
+        return;
     for (int i = 0; i < std::min (effect->numParams, bodySize / (int) sizeof (float)); ++i)
     {
         float value;

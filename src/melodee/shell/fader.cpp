@@ -117,16 +117,14 @@ void set_fader_target(Context& c, unsigned target) {
         c.notice(std::string(fader_target_name(FaderTarget(target))) + (FaderTarget(target) == FaderTarget::PitchBend ? ": plug-in and MIDI tracks" : ": kit tracks"));
         return;
     }
-    t.fader_target = uint8_t(target);
-    t.fader_learned = {}; // the pot it followed gives way
-    t.fader_on = true;
-    c.notice("Fader: " + std::string(fader_target_name(FaderTarget(target))));
+    assign_fader_target(t, FaderTarget(target)); // pinned: a knob on another page leaves it (issue 57)
+    c.notice("Fader: " + std::string(fader_target_name(FaderTarget(target))) + ", pinned");
 }
 
 void learn_fader(Context& c, const Binding& b, unsigned pot) {
     auto& t = c.track();
-    if (!t.used() || t.fader_pin) return;
-    auto learned = fader_learnable(t, c.ui.track, b);
+    if (!t.used()) return;
+    auto learned = fader_follow(t, c.ui.track, b, c.ui.page == PageId::FaderPage);
     if (!learned.learned()) return; // not one of the track's values (a tempo, a pattern's length, a bus's effect): it keeps what it has
     learned.pot = uint8_t(pot % 3);
     t.fader_learned = learned;

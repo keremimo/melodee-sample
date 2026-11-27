@@ -161,26 +161,55 @@ void describe_clap(PluginFile& f) {
     }
 }
 
-// An Open MPC folder: plugin-meta.xml's <PLUGIN name=... file=".../x.so" isInstrument="1"/>.
-bool describe_open_mpc(PluginFile& f) {
+// An MPC plug-in folder: Akai's plugin.json (plugin_json_in(); the MPC plug-in SDK's folder, one for every MPC, its
+// builds in file64 and file32), else Open MPC's plugin-meta.xml (<PLUGIN name=... file=".../x.so" isInstrument="1"/>).
+// The aarch64 build it names is opened, else the armv7 one through the bridge, else one found beside them (a .so
+// renamed since). Either runs at MPC OS's 44.1 kHz: an Open MPC engine ignores any other rate (mpc-vst-plugins,
+// wrapper/engine.h; its releases come in the SDK's folder too), and an SDK build told 44.1 kHz plays right as well.
+bool describe_mpc_folder(PluginFile& f) {
     fs::path folder(f.path);
+    juce::File json(juce::String((folder / "plugin.json").string()));
     juce::File meta(juce::String((folder / "plugin-meta.xml").string()));
-    if (!meta.existsAsFile()) return false;
-    auto xml = juce::parseXML(meta);
-    juce::XmlElement* plugin = xml ? (xml->hasTagName("PLUGIN") ? xml.get() : xml->getChildByName("PLUGIN")) : nullptr;
-    f.name = plugin && plugin->hasAttribute("name") ? plugin->getStringAttribute("name").toStdString() : stem(folder);
-    if (plugin && plugin->hasAttribute("isInstrument")) f.instrument = plugin->getIntAttribute("isInstrument") ? 1 : 0;
-    f.fixed_rate = 44100; // the Open MPC engine contract (mpc-vst-plugins, wrapper/engine.h)
-    std::string so = plugin ? juce::File::createFileWithoutCheckingPath(plugin->getStringAttribute("file")).getFileName().toStdString() : "";
-    if (so.empty() || !fs::exists(folder / so)) { // the first .so beside it
-        so.clear();
+    bool akai = json.existsAsFile(), open_mpc = meta.existsAsFile();
+    if (!akai && !open_mpc) return false;
+    f.name = stem(folder);
+    f.fixed_rate = 44100;
+    std::vector<std::string> named; // its libraries, in the folder
+    if (akai && json.getSize() < (1 << 20)) {
+        auto p = plugin_json_in(json.loadFileAsString().toStdString());
+        if (!p.name.empty()) f.name = p.name;
+        f.instrument = p.instrument;
+        for (const auto* file : {&p.file64, &p.file32, &p.file})
+            if (!file->empty()) named.push_back(*file);
+    }
+    if (open_mpc && named.empty()) {
+        auto xml = juce::parseXML(meta);
+        juce::XmlElement* plugin = xml ? (xml->hasTagName("PLUGIN") ? xml.get() : xml->getChildByName("PLUGIN")) : nullptr;
+        if (plugin && plugin->hasAttribute("name")) f.name = plugin->getStringAttribute("name").toStdString();
+        if (plugin && plugin->hasAttribute("isInstrument")) f.instrument = plugin->getIntAttribute("isInstrument") ? 1 : 0;
+        auto so = plugin ? juce::File::createFileWithoutCheckingPath(plugin->getStringAttribute("file")).getFileName().toStdString() : "";
+        if (!so.empty()) named.push_back(so);
+    }
+    std::string arm64, arm32;
+    bool any = false; // a library seen, ARM or not
+    auto consider = [&](const fs::path& path) {
+        std::error_code error;
+        if (!arm64.empty() || !fs::is_regular_file(path, error)) return;
+        any = true;
+        int arm = arm_elf(path.string());
+        if (arm == 2) arm64 = path.string();
+        else if (arm == 1 && arm32.empty()) arm32 = path.string();
+    };
+    for (const auto& file : named) consider(folder / file);
+    if (arm64.empty() && arm32.empty()) {
         std::error_code error;
         for (const auto& entry : fs::directory_iterator(folder, error))
-            if (ends_with(entry.path().string(), ".so")) { so = entry.path().filename().string(); break; }
+            if (ends_with(entry.path().string(), ".so")) consider(entry.path());
     }
-    if (so.empty()) { f.format = PluginFormat::Vst2; f.why = "No library in the folder"; return true; }
-    describe_library(f, (folder / so).string());
-    read_drums(f, (folder / so).string());
+    const auto& library = arm64.empty() ? arm32 : arm64;
+    if (library.empty()) { f.format = PluginFormat::Vst2; f.why = any ? "Not an ARM build" : "No library in the folder"; return true; }
+    describe_library(f, library);
+    read_drums(f, library);
     return true;
 }
 } // namespace
@@ -215,7 +244,7 @@ PluginFile describe_plugin(const std::string& path) {
         if (ends_with(path, ".vst3")) describe_vst3(f);
         else if (ends_with(path, ".clap")) describe_clap(f);
         else if (ends_with(path, ".lv2")) describe_lv2(f);
-        else if (!describe_open_mpc(f)) { f.folder = true; f.name = fs::path(path).filename().string(); }
+        else if (!describe_mpc_folder(f)) { f.folder = true; f.name = fs::path(path).filename().string(); }
         return f;
     }
     if (ends_with(path, ".clap")) { describe_clap(f); return f; }

@@ -24,7 +24,7 @@
 // Manual with no cut yet (K3 onto it, Erase + Chop; chop_fresh): pad 1
 // blinks red and plays the region; then the red walks, the pad of the slice
 // the next tap makes, and only it cuts (after pad 16 the pads turn to bank B,
-// its pad 1 red; up to 64 slices, shell/chop_mode.cpp). A lit pad tapped
+// its pad 1 red; up to 128 slices, shell/chop_mode.cpp). A lit pad tapped
 // meanwhile plays again from its slice, the cuts after it gone. Stopped short
 // of the end (another control, the page left), the sound stops and the red
 // stays on the next pad: tapped, it plays on from the last cut and the take
@@ -55,6 +55,7 @@
 #include "melodee/ui/waveform.h"
 #include "melodee/ui/widgets.h"
 #include "melodee/model/slice_banks.h"
+#include "melodee/model/slice_hits.h"
 #include <cmath>
 #include <cstdio>
 #include <tuple>
@@ -182,11 +183,18 @@ void draw(Paint& p, const Snapshot& s) {
     if (s.detail_to > s.detail_from) detail = {&s.detail, float(s.detail_from) / frames, float(s.detail_to) / frames};
     float y = zone::picture_y + 22, wh = 92;
     auto x_of = [&](float at) { return x + (at - from) / (to - from) * w; };
-    // What the audition voice plays now (mock 5): the slice a pad started, with its head and wake, or Manual's take.
+    // What plays now (mock 5): the slice a pad started (through the kit pad, or the audition voice with no kit pad),
+    // with its head and wake, or Manual's take (the audition voice); the newer of the two.
     PadSound audition;
     audition.sample = s.ui.chop_sample;
     WaveHead head;
     const PlayHead* playing = pad_head(s, sampler_pads, audition, frames, head);
+    const int kit = chop_kit_pad(s.track(), s.ui.chop_sample);
+    if (kit >= 0) {
+        WaveHead kit_head;
+        const PlayHead* hit = pad_head(s, unsigned(kit), audition, frames, kit_head); // the heads are newest first
+        if (hit && chop_sound(hit, slices, frames, false).slice >= 0 && (!playing || hit < playing)) { playing = hit; head = kit_head; }
+    }
     ChopSound sound = chop_sound(playing, slices, frames, s.ui.chop_take_at != 0);
     int sounding = sound.slice >= 0 && head.wake > 0 ? sound.slice : -1;
     float sa = 0, sb = 0; // the sounding slice, 0..1 of the file
@@ -251,6 +259,12 @@ void draw(Paint& p, const Snapshot& s) {
             const float hx = x_of(float(h.frame) / frames);
             if (hx >= x - 2 && hx <= x + w + 2) p.fill(hx - 1.5f, y + wh - 3, 3, 3, colour::sec, 1);
         }
+    }
+    // A slice heard backwards (its own Reverse, Shift + Loop, against the kit pad's): the reverse arrow at its top left.
+    for (unsigned n = 0; n < slices.count; ++n) {
+        if (!slice_heard_reversed(s.track(), s.ui.chop_sample, slices, n)) continue;
+        const float l = std::max(x, x_of(float(slices.start[n]) / frames)), r = std::min(x + w, x_of(float(slices.end(n, frames)) / frames));
+        if (r - l >= 15) icon(p, Icon::Reverse, l + 2, y + 2, 11, n == selected ? colour::text : c, 1.4f);
     }
     float wide_start = !s.ui.chop_focus ? 2 : 1, wide_end = s.ui.chop_focus ? 2 : 1; // the one the wheel moves
     p.fill(x_of(a), y, wide_start, wh, knob_shade(s.ui.track, 0));            // K1's handle

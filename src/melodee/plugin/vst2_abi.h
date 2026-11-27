@@ -118,4 +118,13 @@ inline void setTime (TimeInfo& t, bool isPlaying, double samplePos, double ppq, 
 }
 
 constexpr int hostVersion = 2400;
+
+// Melodee's own state of a VST2 plug-in (Vst2Instance and Vst2BridgeInstance get/setStateInformation): "MVS2", a
+// kind byte, then the plug-in's chunk (for setChunk as a bank, or as one program) or each parameter's value as a
+// native float. A project keeps it; plugin/xpl_preset.h makes it from an MPC preset.
+namespace state
+{
+constexpr char tag[4] = { 'M', 'V', 'S', '2' };
+constexpr uint8_t chunk = 1, parameters = 2, programChunk = 3;
+}
 } // namespace vst2

@@ -584,7 +584,8 @@ void SampleLibrary::scan() {
     }
     auto tops = internal_tops();
     std::error_code error;
-    auto start_of = [&](Drive d) { return d == Drive::Internal ? std::string() : fs::is_directory(root_seen, error) ? root_seen : card_top; };
+    // A drive's start: the card's top (most keep their sounds in folders of their own there), the internal drive's list.
+    auto start_of = [&](Drive d) { return d == Drive::Internal ? std::string() : !card_top.empty() ? card_top : root_seen; };
     std::string left; // going up: the folder left, to put the cursor on
     if (ask.pending && ask.up && list_folder(folder)) { // out of STARRED or RECENT: back where it was opened
         left = folder;

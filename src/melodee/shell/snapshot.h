@@ -4,6 +4,7 @@
 #include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/comp_trail.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/playheads.h"
@@ -33,6 +34,12 @@ struct PatternSketch {
 };
 
 struct Snapshot {
+    // Shell::snapshot()'s own, kept from frame to frame: what the kits and pattern sketches below were last copied
+    // at, so a frame in which neither can have changed leaves them as they are. A new Snapshot is always filled
+    // whole. `whole`: this frame was.
+    uint64_t heavy_serial = 0;
+    uint32_t sent_seen = 0, whole_at = 0;
+    bool whole = true;
     std::shared_ptr<const TakePeaks> audio_peaks; // freeze plan F3: the takes' overviews (Context::audio_peaks)
     std::shared_ptr<const JamList> jams;         // jam capture: the jams kept (Context::jam_view), for JAMS
     UiState ui;
@@ -48,7 +55,7 @@ struct Snapshot {
     bool following = false;                  // MIDI clock in leads the transport (parity phase 9)
     bool following_mtc = false;              // and MTC in (parity phase 9b)
     std::array<uint8_t, track_count> playing_patterns {};
-    uint32_t ticks = 0;                      // 96 a quarter since Play
+    uint32_t ticks = 0;                      // ticks_per_quarter a quarter since Play
     bool song_playing = false;
     unsigned song_bar = 0;
     std::array<float, track_count> meters {};
@@ -60,6 +67,12 @@ struct Snapshot {
     std::array<GrainPlace, GrainTrail::size> grains {}; // a cloud's grains heard now, and the marks of those just gone
     float compression = 0;                   // dB the master compressor takes off now (parity phase 7)
     std::array<CompColumn, comp_columns> comp_trail {}; // what it heard and took off, a column every comp_column_ms, oldest first
+    // The mixer (docs/MIXER_PLAN.md): each strip's meter by strip number (each side's peak after its level, pan and
+    // mute; its compressor's gain reduction, dB), and the selected track's strip's level and reduction over time.
+    struct StripShown { float left = 0, right = 0, reduction = 0; };
+    std::array<StripShown, strip_channels> strips {};
+    std::array<CompColumn, comp_columns> strip_trail {};
+    std::array<float, spectrum_bands> spectrum {}; // the mixer's EQ picture: the channel in hand's bands, dB (shell/spectrum_view.h)
     std::array<CompBarColumn, comp_bar_columns> comp_bar {}, comp_ghost {}; // compressor B: this bar, and the one before
     int comp_bar_at = -1;                                                   // the column the transport is at; -1 stopped
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)
@@ -72,6 +85,9 @@ struct Snapshot {
     // Pads (round 2, pads B): each pad of the bank in view drawn as its own waveform, start to end; a bit a pad that has one.
     std::array<std::array<uint8_t, 32>, 16> pad_waves {};
     uint16_t pad_waves_shown = 0;
+    // Step Edit's SOUND panel: the whole sample the step in hand plays (its own, else its pad's).
+    std::array<uint8_t, 96> step_wave {};
+    bool step_wave_shown = false;
     struct Take {
         uint8_t state = 0;             // TakeRecorder::State
         uint32_t frames = 0, length = 0;
@@ -86,13 +102,14 @@ struct Snapshot {
     bool monitoring = false, speaker_quieted = false;
     uint8_t usb_state = 0;             // UsbStreamState
     std::vector<HistoryRow> history;   // the undo list's rows, top down, while it is open (shell/history_list.h)
-    uint8_t history_redos = 0;         // how many of them are undone: the row of the state in hand
+    uint16_t history_redos = 0;        // how many of them are undone: the row of the state in hand
     std::vector<SampleFile> files;     // Samples: the folder listed
     std::string sample_root;           // the card's Samples folder, Melodee/Samples; empty: no card
     std::string files_folder;          // the folder listed (empty: the internal drive's categories)
     bool files_top = true;             // nothing above it (B1 has no job)
     PluginRack::View plugins;          // the PLUG-INS picker: the folder listed
     PluginPrograms presets;            // PRESETS: the plug-in's programs
+    std::vector<std::string> own_sounds; // SOUNDS: the names of the track's engine's sounds of one's own (sound_name())
     std::shared_ptr<const PluginSkin> plugin_skin; // the plug-in in the panel's skin (plugin/plugin_skin.h), null none
     ScreenPicturePtr plugin_picture; // its own screen's newest picture (plugin/plugin_screen.h), null none
     ProjectStore::View projects;       // Project page and Exit

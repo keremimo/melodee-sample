@@ -27,7 +27,7 @@ void roll_write(Context& c, int key, uint8_t velocity, int pitch, int cutoff) {
     if (roll_focus(pattern, ui, lane) < 0) { // not there yet: written at the start of the cursor's step
         e.tick = roll_cursor(pattern, ui) * pattern.q();
         uint32_t length = ui.roll_new ? ui.roll_new : pattern.q();
-        e.length = uint16_t(std::clamp<uint32_t>(std::min(length, pattern.length - e.tick), 1, 0xffff));
+        e.length = note_ticks(std::min(length, pattern.length - e.tick));
         e.velocity = uint8_t(std::clamp<int>(velocity, 1, 127));
         if (cutoff >= 0 && c.track().engine == EngineKind::Sampler) e.cutoff = uint8_t(std::min(cutoff, 100) + 1); // as Seq Record keeps it
         if (!pattern.add(e)) { c.notice("The pattern is full"); return; }

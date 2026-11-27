@@ -8,7 +8,8 @@
 // where it goes. A kit: B1 Trim / Layers / Tune / Amp Env, B2 Play / Colour /
 // Follow / Cloud, B3 Mix / Sends / Filter / Filt Env / Kit filter, on the last pad hit;
 // a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins): B1 its
-// presets (or its face when it has none) and its parameters, B2 arp and chord,
+// presets (or its face when it has none), its own screen and its parameters,
+// where Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT; B2 arp and chord,
 // B3 mix, sends, effects; a MIDI track: B1 device, program, CC, B2 arp and
 // chord, B3 EDIT (the Edit page); an empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESETS: walks the presets; EDIT: the rows; an empty track: walks its list), Push moves to the next card
@@ -217,73 +218,25 @@ void lfo_picture(Paint& p, const Snapshot& s, const StagePage& page, float y0 = 
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded)); // the cards hold the numbers
 }
 
-// MIX: what the cards cannot say. The track's meter with its level marked, where it sits between left and right,
-// and where it goes: the master, and its send (as thick as it is) into its bus, named by the bus's first effect.
-void mix_picture(Paint& p, const Snapshot& s) {
-    const auto& t = s.track();
-    const auto& m = t.mix;
-    auto c = colour_of(s);
-    float mx = px + 4, my = top + 8, mh = zone::picture_h - 16;
-    p.fill(mx, my, 7, mh, colour::line, 3);
-    float meter = s.meters[s.ui.track % track_count];
-    auto place = [](float db) { return std::clamp((db + 48) / 48, 0.0f, 1.0f); };
-    float heard = meter > 0 && !m.mute ? place(20 * std::log10(meter)) : 0;
-    if (heard > 0) p.fill(mx, my + mh * (1 - heard), 7, mh * heard, c, 3);
-    for (float db : meter_steps_db) p.fill(mx + 10, my + mh * (1 - place(db)) - 0.5f, 4, 1, colour::dim); // the LEDs' five steps as a scale
-    p.fill(mx - 3, my + mh * (1 - m.level / 127.0f) - 0.75f, 13, 1.5f, colour::text); // the level
-    // The pan: a half dial, its needle where the track sits.
-    float cx = px + 108, cy = top + 92, r = 32;
-    juce::Path dial;
-    dial.addCentredArc(cx, cy, r, r, 0, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
-    p.g.setColour(colour::line);
-    p.g.strokePath(dial, juce::PathStrokeType(5, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    float a = std::clamp(m.pan / 50.0f, -1.0f, 1.0f) * juce::MathConstants<float>::halfPi;
-    p.g.setColour(knob_shade(s.ui.track, 1));
-    p.g.drawLine(cx, cy, cx + (r - 3) * std::sin(a), cy - (r - 3) * std::cos(a), 2.5f);
-    p.circle(cx, cy, 4, knob_shade(s.ui.track, 1));
-    p.text("L", cx - r - 8, cy + 6, 16, 14, caps_text(colour::dim), juce::Justification::centred);
-    p.text("R", cx + r - 8, cy + 6, 16, 14, caps_text(colour::dim), juce::Justification::centred);
-    p.fill(mx + 12, cy - 1, cx - r - 10 - mx - 12, 2.5f, c, 1);
-    // Where it goes: the master, and the bus its send feeds.
-    float bx = px + pw - 98, from = cx + r + 6;
-    auto box = [&](float y, Icon glyph, juce::Colour gc, const juce::String& name, const juce::String& under) {
-        p.fill(bx, y, 98, 36, colour::surf, 4);
-        icon(p, glyph, bx + 8, y + 9, 18, gc, 1.5f);
-        p.text(name, bx + 32, y + (under.isEmpty() ? 11 : 4), 62, 14, caps_text(colour::text));
-        if (under.isNotEmpty()) p.text(under, bx + 32, y + 18, 62, 14, p.fit(under, plain(colour::mid, type::small), 62, type::floor));
-    };
-    juce::Path to_master, to_bus;
-    to_master.startNewSubPath(from, cy - 4); to_master.cubicTo(from + 30, cy - 4, bx - 30, top + 30, bx, top + 30);
-    p.g.setColour(c);
-    p.g.strokePath(to_master, juce::PathStrokeType(3, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    box(top + 12, Icon::Speaker, colour::text, "MASTER", {});
-    // The quick send (K3) into bus A, as thick as it is; the other three are SENDS' (B1 again).
-    const auto& bus = s.project.buses[0];
-    const auto& first = effect_info(EffectKind(bus.fx.slots[0].kind));
-    float by = top + 100, send = m.sends[0] / 100.0f;
-    if (m.sends[0] > 0) {
-        to_bus.startNewSubPath(from, cy + 4); to_bus.cubicTo(from + 30, cy + 4, bx - 30, by + 18, bx, by + 18);
-        p.g.setColour(knob_shade(s.ui.track, 2));
-        p.g.strokePath(to_bus, juce::PathStrokeType(1 + 4 * send, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    box(by, bus.fx.slots[0].used() ? family_icon(first.family) : Icon::Ring, m.sends[0] > 0 ? knob_shade(s.ui.track, 2) : colour::dim,
-        "BUS A", bus.fx.slots[0].used() ? juce::String(first.name) : juce::String());
-}
-
 // SENDS: the track's level on the left, a line from it to each of the four buses as thick as its send, each bus
 // with its first effect's glyph and name and a bar of what it receives. The bus in view (K2) wears its letter on a
-// chip in K2's shade, its line and bar in K1's (the send); the other three grey. On a kit the last pad's own sends,
-// under its name; Shift held, the whole kit's (KIT SEND, Shift + K1) under the track's.
+// chip in K2's shade, its line and bar in K1's (the send); the other three grey. Only a kit has it since the mixer
+// (docs/MIXER_PLAN.md step 6): the last pad's own sends, under its name (the kit's own send is the mixer's).
 void sends_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     const auto& m = t.mix;
     auto c = colour_of(s);
-    const bool pad_view = t.engine == EngineKind::Sampler && !s.ui.shift;
+    const bool pad_view = t.engine == EngineKind::Sampler;
     const auto& pad = t.pads[t.last_pad % sampler_pads];
     auto send_of = [&](unsigned b) { return pad_view ? (pad.used() ? pad.sends[b] : 0) : m.sends[b]; };
     juce::String title = pad_view ? pad_name(s, t.last_pad % sampler_pads, false) : name_case(juce::String(t.name));
     if (pad_view && title.isEmpty()) { char label[4]; pad_label(t.last_pad % sampler_pads, label); title = label; } // an empty pad: its place
     p.text(title, px, top + 4, 140, 20, p.fit(title, plain(colour::text, type::list, Weight::SemiBold), 140, type::floor));
+    if (pad_view && pad.used() && pad.out) { // sent to a submix (Shift + K2): its name in its colour
+        const auto& sub = s.project.subs[(pad.out - 1) % sub_count];
+        juce::String to = juce::String::fromUTF8("\xe2\x86\x92 ") + (sub.name[0] ? juce::String(sub.name) : "SUB " + juce::String(pad.out));
+        p.text(to, px, top + 21, 140, 14, p.fit(to, plain(sub_colour((pad.out - 1) % sub_count), type::body, Weight::Bold), 140, type::floor));
+    }
     float mx = px + 4, my = top + 36, mh = zone::picture_h - 44;
     p.fill(mx, my, 6, mh, colour::line, 3);
     float meter = s.meters[s.ui.track % track_count];
@@ -664,7 +617,8 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         bool amp = page.kind == StageKind::AmpEnv;
         bool gate = pad.play == PadPlay::Gate, from_end = !gate && !pad.decay_from_start;
         int a = amp ? pad.attack : pad.filter_attack, d = amp ? pad.decay : pad.filter_decay, rl = amp ? pad.release : pad.filter_release;
-        float sustain = (amp ? pad.sustain : pad.filter_sustain) / 100.0f;
+        // A one shot from the start falls to silence over its decay (issue 64): its sustain is Note On's.
+        float sustain = amp && !gate ? 0.0f : (amp ? pad.sustain : pad.filter_sustain) / 100.0f;
         bool hold = amp && d >= 100;
         double decay = time_seconds(d) * (amp ? t.params[sampler::Decay] / 100.0 : 1.0);
         float soft = amp ? 1.0f - 0.6f * pad.velocity_sense / 100.0f : 1.0f; // K3: how much softer a soft hit plays
@@ -1046,6 +1000,7 @@ ui::SoftKeys stage_keys(const Snapshot& s) {
     for (unsigned n = 0; n < 3; ++n) {
         if (!stage_has(g, n)) continue; // no pages: a blank key
         unsigned sub = n == at.group ? at.sub : 0;
+        while (n != at.group && sub + 1 < stage_count(g, n) && stage_skips(g, n, sub, skip)) ++sub; // its first page shown (B3: FX, MIX passed over)
         keys.labels[n] = stage_page_at(t, n, sub).key;
         if (stage_page_at(t, n, sub).kind == StageKind::PluginSound && !plugin_has_presets(s)) keys.labels[n] = "PLUG-IN"; // its face
         if (stage_page_at(t, n, sub).kind == StageKind::Trim && instrument) keys.labels[n] = "ZONES"; // round 3 "instrument C"
@@ -1062,6 +1017,15 @@ bool plugin_ready(const Snapshot& s) {
     return panel.entry == s.track().plugin && panel.status == PluginStatus::Ready;
 }
 bool plugin_has_presets(const Snapshot& s) { return plugin_ready(s) && s.ui.plugin_panel.programs > 0; } // B1's name: PRESETS
+// Shift on the plug-in's B1 pages: B1 another plug-in from the card, B2 its presets, B3 TRANSPORT (it hears Play and
+// Stop: its LED).
+ui::SoftKeys plugin_shift_keys(const Snapshot& s) {
+    const auto& t = s.track();
+    const bool chosen = t.plugin < max_plugins;
+    ui::SoftKeys keys {{"PLUG-INS", plugin_has_presets(s) ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, colour_of(s)};
+    if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[t.plugin].transport ? 4 : 0; }
+    return keys;
+}
 bool plugin_presets(const Snapshot& s) { return plugin_has_presets(s) && !s.presets.list.empty(); }          // and the list to show
 // PRESETS: the preset in view, while turning the one under the cursor, else the one it plays (-1: none yet).
 int plugin_preset_at(const Snapshot& s) {
@@ -1154,7 +1118,7 @@ void draw(Paint& p, const Snapshot& s) {
     } else if (page.kind == StageKind::PluginSound && plugin_presets(s)) { // which preset of how many
         int at = plugin_preset_at(s);
         h.left.push_back(pill((at >= 0 ? juce::String(at + 1) : juce::String::fromUTF8("\xe2\x80\x93")) + " / " + juce::String(int(s.presets.list.size()))));
-    } else if ((page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) && plugin_ready(s)) { // the share of each audio block it takes, as Edit's
+    } else if ((page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) && plugin_ready(s)) { // the share of each audio block it takes
         const auto& panel = s.ui.plugin_panel;
         h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
     } else if (t.is_audio() && t.used()) { // freeze plan F3: the pattern in hand and its bars; red armed, filled recording
@@ -1194,6 +1158,7 @@ void draw(Paint& p, const Snapshot& s) {
             if (stems) keys.glyphs[2] = Icon::Layers;
         }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
+    if (s.ui.shift && !frozen && t.engine == EngineKind::Plugin && stage_plugin_page(page.kind)) keys = plugin_shift_keys(s);
     if (!t.used()) { // what it becomes: B1 BACK to the types, or CANCEL to the nearest track that is not empty
         bool any = s.ui.new_sources;
         for (const auto& other : s.project.tracks) any |= other.used();
@@ -1213,7 +1178,7 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Envelope: envelope_picture(p, s, page); break;
     case StagePicture::Lfo: lfo_picture(p, s, page); break;
     case StagePicture::ShiftRows: case StagePicture::Bars: bars_picture(p, s, page, page.picture == StagePicture::ShiftRows); break;
-    case StagePicture::Mix: mix_picture(p, s); break;
+    case StagePicture::Mix: break; // MIX: gone with the mixer (step 6), Stage passes over it
     case StagePicture::Sends: sends_picture(p, s); break;
     case StagePicture::Arp: arp_picture(p, s); break;
     case StagePicture::Chord: chord_picture(p, s); break;
@@ -1229,6 +1194,25 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Region: region_picture(p, s, page); break;
     case StagePicture::Input: input_picture(p, s); break;
     }
+}
+
+// A PLUGIN track's rows of parameters (the panel knows how many).
+void plugin_rows(Context& c, int delta) {
+    unsigned entry = c.track().plugin;
+    if (entry >= max_plugins || c.ui.plugin_panel.entry != entry || !c.ui.plugin_panel.rows) return;
+    auto& row = c.ui.plugin_row[entry];
+    row = uint16_t(std::clamp<int>(row + delta, 0, c.ui.plugin_panel.rows - 1));
+    c.ui.plugin_panel.row = row;
+    c.plugin_panel_at = 0; // its cards again at once
+}
+
+// Minus / Plus on a plug-in's page: the first row of the page after, or of the page before.
+void plugin_page_step(Context& c, int way) {
+    unsigned entry = c.track().plugin;
+    const auto& panel = c.ui.plugin_panel;
+    if (entry >= max_plugins || panel.entry != entry || !panel.rows) return;
+    unsigned to = way > 0 ? panel.next_page : panel.prev_page;
+    plugin_rows(c, int(to) - int(panel.row));
 }
 
 void soft(Context& c, int key) {
@@ -1251,6 +1235,14 @@ void soft(Context& c, int key) {
         return;
     }
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands first
+    if (c.ui.shift && c.track().engine == EngineKind::Plugin && stage_plugin_page(page.kind)) { // the plug-in's own jobs
+        const auto& t = c.track();
+        const bool open = t.plugin < max_plugins && c.ui.plugin_panel.entry == t.plugin;
+        if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument); // Shift + B1 PLUG-INS: another from the card
+        if (key == 1 && open && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(t.plugin); // Shift + B2 PRESETS
+        if (key == 2) c.toggle_plugin_transport(t.plugin); // Shift + B3 TRANSPORT
+        return;
+    }
     if (!c.track().used()) { // B1 BACK: the types; CANCEL: the nearest track that is not empty, on the page this one was picked on
         if (key == 0) { if (c.ui.new_sources) new_track_types(c); else cancel_new_track(c); }
         return;

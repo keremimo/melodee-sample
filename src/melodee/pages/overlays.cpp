@@ -205,6 +205,8 @@ void draw_notice(Paint& p, const Snapshot& s) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pad") : "Copy " + juce::String(label) + ": pick where";
     } else if (s.ui.copying == UiState::Copying::Patterns) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pattern") : "Copy P" + juce::String(s.ui.copy_from + 1) + ": pick where";
+    } else if (s.ui.copying == UiState::Copying::Scenes) {
+        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a sequence") : "Copy SEQ " + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.copying == UiState::Copying::Tracks) {
         juce::String verb = s.ui.moving ? "Move" : "Copy";
         text = s.ui.copy_from < 0 ? verb + ": pick a track" : verb + " track " + juce::String(s.ui.copy_from + 1) + ": pick where";
@@ -217,7 +219,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here
         const auto& t = s.track();
         bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && pad_job(s.ui) == play_pad);
-        text = kit ? "Mute: pads" : "Mute: tracks";
+        text = kit ? "Mute: pads" : mute_on_others(s.ui) ? "Mute: submixes, buses" : "Mute: tracks";
         copying = true; // in the track's colour, as a mode
     } else {
         return;

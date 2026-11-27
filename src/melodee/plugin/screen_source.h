@@ -6,6 +6,7 @@
 // no other non-audio call into the plug-in does: false, and nothing done, while one does (try again a tick later).
 #pragma once
 #include <array>
+#include <cstdint>
 
 struct melodee_screen_frame;
 struct melodee_screen_input;
@@ -22,6 +23,9 @@ public:
     virtual bool screenControls(std::array<int, 3>& indices) = 0;
     // It asked for a draw since the last call (any thread).
     virtual bool takeRedraw() = 0;
+    // The printed buttons its page takes now, as it last told (MELODEE_SCREEN_KEY_ bits; any thread). 0: none, as
+    // for a plug-in that never tells (melodee.screen-host/1, the 32-bit bridge).
+    virtual uint32_t screenKeys() const { return 0; }
     // Its next block should run although the rack let it sleep (plugin/idle_gate.h): it asked to be run (a screen
     // input its audio side takes; CLAP's request_process), or a value waits for it. Any thread.
     virtual bool wantsProcess() const = 0;

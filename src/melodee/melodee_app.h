@@ -33,6 +33,7 @@ public:
     AudioFormat audio_format() const override { return {shell.audio_rate(), shell.audio_periods()}; } // any thread: Settings'
     void audio_opened(const AudioFormat& format) override;              // audio thread
     ScreenMirrorMode screen_mirror() const override { return shell.screen_mirror(); } // any thread: Settings' Screen Mirror
+    FileSharing file_sharing() const override { return {shell.file_sharing(), "MELODEE"}; } // any thread: Settings' File sharing
     const UsbStems* stems() const override { return &stem_block; }    // audio thread
     const AudioBlock* usb_mix() const override { return usb_full ? &usb_block : nullptr; } // audio thread: Settings' USB volume
     void surface(const SurfaceEvent& event) override;                   // MIDI thread
@@ -100,6 +101,7 @@ private:
     // same words (freeze plan F2b; alone or `status`: what is frozen now) and `melodee-unfreeze TRACK`: parsed on
     // arrival, asked on the MIDI thread.
     MidiQueue<4, melodee::Context::PrintAsk> remote_print;
+    MidiQueue<2, std::array<char, 40>> remote_stems; // `melodee-stems NAME`: STEMS from Song's export, as B2 there
     std::atomic<bool> panic_asked {false}; // `melodee-midi panic`
     bool power_known = false;
     bool power_off_asked = false;             // service thread: systemd asked to turn the MPC off

@@ -99,7 +99,7 @@ def night_shades():
         body = body[:body.index("}};")]
         vals = [int(x, 16) for x in re.findall(r"0x([0-9A-Fa-f]{6})", body)]
         return [vals[3 * n:3 * n + 3] for n in range(rows)]
-    return table("track_shades", 16), table("loop_shades", 4)
+    return table("track_shades", 16), table("loop_shades", 4), table("sub_shades", 8)
 
 
 # name, BG, SURF, TEXT (FM-1's), chroma scale, lightness shift of the track colours (before the checks)
@@ -148,7 +148,7 @@ def neutral_at(bg, text, start, ground, need):
     return c
 
 
-def build(name, bg, surf, text, chroma, shift, tracks, loops):
+def build(name, bg, surf, text, chroma, shift, tracks, loops, subs):
     light = luminance(bg) > 0.4
     p = dict(bg=bg, surf=surf, text=text)
     p["panel"] = mix(bg, surf, 0.45)
@@ -163,6 +163,7 @@ def build(name, bg, surf, text, chroma, shift, tracks, loops):
         p[key] = fit_colour(hexrgb(NIGHT[key]), grounds, chroma, shift, light)
     p["tracks"] = [[fit_colour(hexrgb(v), grounds, chroma, shift, light) for v in row] for row in tracks]
     p["loops"] = [[fit_colour(hexrgb(v), grounds, chroma, shift, light) for v in row] for row in loops]
+    p["subs"] = [[fit_colour(hexrgb(v), grounds, chroma, shift, light) for v in row] for row in subs]
     p["light"] = light
     return p
 
@@ -182,6 +183,7 @@ def build_lcd(name, bg, surf, text):
         p[key] = text
     p["tracks"] = [list(shades) for _ in range(16)]
     p["loops"] = [list(shades) for _ in range(4)]
+    p["subs"] = [list(shades) for _ in range(8)]
     return p
 
 
@@ -194,12 +196,13 @@ def weakest(p):
 
 
 def main():
-    tracks, loops = night_shades()
+    tracks, loops, subs = night_shades()
     night = {k: hexrgb(v) for k, v in NIGHT.items()}
     night["tracks"] = [[hexrgb(v) for v in row] for row in tracks]
     night["loops"] = [[hexrgb(v) for v in row] for row in loops]
+    night["subs"] = [[hexrgb(v) for v in row] for row in subs]
     night["light"] = False
-    all_ = [("NIGHT", night)] + [(n, build(n, bg, surf, text, c, s, tracks, loops)) for n, bg, surf, text, c, s in PALETTES]
+    all_ = [("NIGHT", night)] + [(n, build(n, bg, surf, text, c, s, tracks, loops, subs)) for n, bg, surf, text, c, s in PALETTES]
     all_.append((LCD[0], build_lcd(*LCD)))
 
     keys = ["bg", "panel", "surf", "raised", "quiet", "line", "text", "sec", "mid", "dim", "rec", "amber", "play", "ice"]
@@ -221,6 +224,7 @@ def main():
              "    uint32_t " + ", ".join(keys) + ";",
              "    std::array<std::array<uint32_t, 3>, 16> tracks;",
              "    std::array<std::array<uint32_t, 3>, 4> loops;",
+             "    std::array<std::array<uint32_t, 3>, 8> subs; // the mixer's submixes",
              "    bool light; // a light ground (DAY, CANDY, LCD)",
              "    int face;   // a face of its own (ui/faces.h), whatever Settings' Font says; -1 none",
              "};",
@@ -230,6 +234,7 @@ def main():
         lines.append(f'    {{"{name}", ' + ", ".join(h(p[k]) for k in keys) + ",")
         lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["tracks"]) + "}},")
         lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["loops"]) + "}},")
+        lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["subs"]) + "}},")
         lines.append(f"     {'true' if p['light'] else 'false'}, {FACE.get(name, -1)}}},")
         (w, which), tr = weakest(p)
         print(f"{name:9} weakest {which} {w:.2f}  tracks min {tr:.2f}")

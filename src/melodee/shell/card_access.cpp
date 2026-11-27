@@ -55,6 +55,7 @@ const char* card_title(const CardView& card) {
     case CardNote::Writing: return "A file is being written";
     case CardNote::Empty: return "Card ejected, nothing on it to open";
     case CardNote::Failed: return "The card could not mount";
+    case CardNote::Network: return "The card is open on the computer";
     default: return "SD card access";
     }
 }
@@ -75,6 +76,7 @@ const char* card_detail(const CardView& card) {
     case CardNote::Writing: return "Wait for the recording or render to finish.";
     case CardNote::Empty: return "The computer may have formatted it.";
     case CardNote::Failed: return "The USB gadget would not mount it.";
+    case CardNote::Network: return "Eject SD Card on the computer, then try again.";
     default: return "";
     }
 }

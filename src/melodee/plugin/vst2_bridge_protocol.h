@@ -41,7 +41,7 @@ enum class Command : uint32_t
     programName,      // i0 -> text
     tailSize,         // -> result
     getState,         // -> data, dataSize
-    setState,         // data, dataSize
+    setState,         // data, dataSize, i0: 1 one program's chunk, 0 the bank's
     close,            // the bridge closes the plug-in and exits
 };
 

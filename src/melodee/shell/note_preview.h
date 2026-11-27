@@ -37,7 +37,7 @@ struct NotePreview {
 // How long a preview of `e` sounds: as long as the sequencer holds it (a touch short of its length, by a tenth of a
 // step of `q`) at `tempo` tenths of a BPM, between preview_shortest_ms and preview_longest_ms.
 inline uint32_t preview_ms(const Event& e, unsigned q, unsigned tempo) {
-    double each = double(std::max<uint16_t>(e.length, 1)) / e.hits(); // a ratchet: its first hit
+    double each = double(std::max<uint32_t>(e.length, 1)) / e.hits(); // a ratchet: its first hit
     double ticks = each - std::min<double>(std::max(q, 1u), each) * 0.1;
     double ms = ticks * 60000.0 / (std::max(tempo, 10u) / 10.0) / ticks_per_quarter;
     return uint32_t(std::clamp(ms, double(preview_shortest_ms), double(preview_longest_ms)));

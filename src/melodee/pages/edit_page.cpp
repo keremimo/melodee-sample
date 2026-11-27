@@ -153,26 +153,6 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& info = engine_info(s.track().engine);
     auto c = colour_of(s);
     Header h = header_of(s);
-    if (s.track().engine == EngineKind::Plugin) { // the plug-in's own parameters, three at a time; B1 another from the card, B2 its presets,
-                                                  // B3 TRANSPORT (it hears Play and Stop: its LED)
-        const auto& panel = s.ui.plugin_panel;
-        bool ours = panel.entry == s.track().plugin;
-        if (ours && panel.status == PluginStatus::Ready) // the share of each audio block it takes
-            h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
-        h.right.push_back(tag_of(s, s.ui.track));
-        bool presets = ours && panel.programs > 0, chosen = s.track().plugin < max_plugins;
-        SoftKeys keys {{"PLUG-INS", presets ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, c};
-        if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[s.track().plugin].transport ? 4 : 0; }
-        if (plugin_page_shown(s, s.track().plugin)) { draw_plugin_page(p, s, s.track().plugin, keys); return; } // its page under B1-B3
-        frame(p, s, keys, h);
-        if (s.track().plugin >= max_plugins) { // none yet: B1 picks one from the card
-            icon(p, Icon::Plug, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
-            p.text("NONE", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
-            return;
-        }
-        draw_plugin_view(p, s, s.track().plugin, zone::picture_y);
-        return;
-    }
     if (!info.page_count) {
         h.right.push_back(tag_of(s, s.ui.track));
         frame(p, s, {{"", "", ""}, -1, c}, h);
@@ -211,19 +191,6 @@ void draw(Paint& p, const Snapshot& s) {
 unsigned page_count(Context& c) { return std::max(edit_page_count(engine_info(c.track().engine)), 1u); }
 
 void soft(Context& c, int key) {
-    if (c.track().engine == EngineKind::Plugin) {
-        if (key == 2 && c.ui.shift) { // Shift + B3: a plug-in's own screen, or Melodee's pages of it, in turn
-            if (c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.has_screen) {
-                c.ui.plugin_own_pages = !c.ui.plugin_own_pages;
-                c.plugin_panel_at = 0; // its cards again at once
-            }
-            return;
-        }
-        if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument);
-        if (key == 1 && c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(c.track().plugin);
-        if (key == 2) c.toggle_plugin_transport(c.track().plugin);
-        return;
-    }
     unsigned count = page_count(c), t = c.ui.track;
     if (key == 1) { // B2: the page map, starting on the page in view
         c.ui.map_open = !c.ui.map_open;
@@ -238,32 +205,9 @@ void soft(Context& c, int key) {
 
 } // namespace
 
-// A PLUGIN track's rows of parameters (the panel knows how many).
-void plugin_rows(Context& c, int delta) {
-    unsigned entry = c.track().plugin;
-    if (entry >= max_plugins || c.ui.plugin_panel.entry != entry || !c.ui.plugin_panel.rows) return;
-    auto& row = c.ui.plugin_row[entry];
-    row = uint16_t(std::clamp<int>(row + delta, 0, c.ui.plugin_panel.rows - 1));
-    c.ui.plugin_panel.row = row;
-    c.plugin_panel_at = 0; // its cards again at once
-}
-
-// Minus / Plus on a plug-in's page: the first row of the page after, or of the page before.
-void plugin_page_step(Context& c, int way) {
-    unsigned entry = c.track().plugin;
-    const auto& panel = c.ui.plugin_panel;
-    if (entry >= max_plugins || panel.entry != entry || !panel.rows) return;
-    unsigned to = way > 0 ? panel.next_page : panel.prev_page;
-    plugin_rows(c, int(to) - int(panel.row));
-}
-
 namespace {
 
 void wheel(Context& c, int delta) {
-    if (c.track().engine == EngineKind::Plugin) { // its own screen takes the wheel, else its rows
-        if (!c.plugin_screen_input(ScreenKey::Wheel, delta)) plugin_rows(c, delta);
-        return;
-    }
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track, count = edit_page_count(info);
@@ -276,7 +220,6 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
-    if (c.track().engine == EngineKind::Plugin && c.plugin_screen_input(ScreenKey::Push, 1)) return; // its own screen's
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track;
@@ -297,11 +240,8 @@ void push(Context& c) {
     }
 }
 
-// Minus / Plus: the octave, or on a PLUGIN track its pages (the wheel walks its rows).
-void nudge(Context& c, int way) {
-    if (c.track().engine == EngineKind::Plugin) { if (!c.plugin_screen_input(ScreenKey::Step, way)) plugin_page_step(c, way); }
-    else octave(c, way);
-}
+// Minus / Plus: the octave.
+void nudge(Context& c, int way) { octave(c, way); }
 } // namespace
 
 const PageSpec edit_page {draw, play_pad, wheel, push, soft, nudge};

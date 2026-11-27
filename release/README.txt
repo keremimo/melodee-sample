@@ -14,8 +14,8 @@ card before you install it.
 
 Requirements
 ------------
-- MPC Sample on firmware 1.3.0.12 or 1.4.0.7. On any other firmware
-  Melodee does not start and the stock app keeps running.
+- MPC Sample on firmware 1.3.0.12, 1.4.0.7 or 1.4.0.8. On any other
+  firmware Melodee does not start and the stock app keeps running.
 - On firmware 1.4: Developer Mode on, in the stock app's Settings on the
   DEV ENHANCEMENTS (BETA) page.
 - A microSD card for the MPC (the one you already use is fine).
@@ -95,7 +95,7 @@ Reporting problems
 Say what you pressed, what you saw and the version (Settings, ABOUT,
 press B3 for the credits, or the line below). After a crash, add the
 report Melodee wrote to the card's "Melodee/Crashes" folder. If Melodee
-did not start at all, check that the firmware is 1.3.0.12 or 1.4.0.7
+did not start at all, check that the firmware is 1.3.0.12, 1.4.0.7 or 1.4.0.8
 (with Developer Mode on) and that the autorun folder and autorun.sh sit
 at the top level of the card.
 Issues: https://github.com/keremimo/melodee-sample/issues

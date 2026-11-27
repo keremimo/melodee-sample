@@ -116,6 +116,7 @@ public:
         pid_t pid = -1;
         uint32_t sequence = 0;
         bool dead = false;
+        int unspunBlocks = 0; // process blocks still to wait without a spin, after one outlasted it (call)
         InheritingMutex lock; // around a whole exchange: its fields, the round trip, the answer
         bool call (bridge::Command, int timeoutMs = 2000);
         // The screen's block, null without one; a screen command and its answer (-1 busy), false with none in time.

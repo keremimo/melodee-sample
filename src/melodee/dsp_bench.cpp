@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/engine/channel_strip.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/model/pad_params.h"
@@ -89,16 +90,76 @@ double thread_seconds() {
 #endif
 }
 
+// As the audio thread: real-time priority. Whether it was granted.
+bool realtime_thread() {
+    sched_param priority {};
+    priority.sched_priority = 30;
+    return pthread_setschedparam(pthread_self(), SCHED_FIFO, &priority) == 0;
+}
+
+// strips=N (docs/MIXER_PLAN.md, core step 2): N mixer strips alone, one after another on this thread, no engine, a
+// block each, as fast as they go. strip=full: all nine bands, the compressor, trim, width and gain on every strip;
+// usual: three bands on each, the compressor on every other. What a block of them takes, against the period.
+int strip_bench(unsigned count, bool full, double seconds, unsigned rate) {
+    dsp::device_rate = float(rate);
+    const unsigned frames = EngineHost::block;
+    std::vector<ChannelStrip> strips(count);
+    for (unsigned n = 0; n < count; ++n) {
+        Strip v;
+        if (full) {
+            for (unsigned b = 0; b < eq_bands; ++b) v.eq[b] = int16_t(b % 2 ? 30 : -30);
+            v.comp_amount = 20; v.comp_gain = 20; v.trim = 10; v.width = 120;
+        } else {
+            v.eq[1] = 30; v.eq[4] = -20; v.eq[7] = 20;
+            if (n % 2) v.comp_amount = 12;
+        }
+        strips[n].set(v);
+        strips[n].reset();
+    }
+    std::vector<float> source(frames * 2 * count), l(frames * count), r(frames * count);
+    uint32_t seed = 1;
+    for (auto& x : source) { seed = seed * 1664525u + 1013904223u; x = float(int32_t(seed)) / 2147483648.0f * 0.5f; }
+    bool realtime = realtime_thread();
+    const double period_us = 1e6 * frames / rate;
+    auto blocks = unsigned(seconds * rate / frames);
+    std::vector<float> took;
+    took.reserve(blocks);
+    for (unsigned n = 0; n < blocks + rate / frames; ++n) {
+        for (unsigned s = 0; s < count; ++s) { // fresh sound in each block, so nothing runs away or dies out
+            std::copy_n(source.data() + s * frames * 2, frames, l.data() + s * frames);
+            std::copy_n(source.data() + s * frames * 2 + frames, frames, r.data() + s * frames);
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        for (unsigned s = 0; s < count; ++s) strips[s].process(l.data() + s * frames, r.data() + s * frames, frames);
+        float us = std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - t0).count();
+        if (n >= rate / frames) took.push_back(us); // after a second of warming up
+    }
+    std::vector<float> sorted = took;
+    std::sort(sorted.begin(), sorted.end());
+    double mean = 0;
+    for (float us : took) mean += us;
+    mean /= std::max<size_t>(took.size(), 1);
+    auto at = [&](double q) { return sorted.empty() ? 0.0f : sorted[std::min(sorted.size() - 1, size_t(q * sorted.size()))]; };
+    std::printf("MELODEE_STRIP_BENCH strips=%u kind=%s rate=%u frames=%u realtime=%d blocks=%u period_us=%.0f mean_us=%.1f p50_us=%.1f "
+                "p99_us=%.1f max_us=%.1f one_core_pct=%.1f per_strip_pct=%.2f\n",
+                count, full ? "full" : "usual", rate, frames, int(realtime), unsigned(took.size()), period_us, mean, at(0.5), at(0.99),
+                sorted.empty() ? 0.0f : sorted.back(), 100 * mean / period_us, 100 * mean / period_us / std::max(count, 1u));
+    return 0;
+}
+
 } // namespace
 
 // Arguments as key=value: seconds (10), rate (48000), threads (3 workers), mode (whole: one dispatch a block; split:
 // the old way), spin (µs the workers wait awake for a run that follows within the block), linger (1: after every
 // run; with mode=split spin=200, the way it was before roadmap P2), pin (1: this thread on core 1, the workers on
-// cores 2, 3, ...; give threads=2), tracks (16).
+// cores 2, 3, ...; give threads=2), tracks (16); strips (N: the mixer's strips alone, strip_bench) and strip (full,
+// usual).
 int dsp_bench(int argc, char** argv) {
     double seconds = 10;
     unsigned rate = 48000, threads = 3, spin = 200, tracks = track_count;
     bool whole = true, linger = false, pinned = false;
+    unsigned strips = 0;
+    bool strips_full = true;
     for (int n = 2; n < argc; ++n) {
         std::string arg = argv[n];
         auto eq = arg.find('=');
@@ -112,8 +173,11 @@ int dsp_bench(int argc, char** argv) {
         else if (key == "linger") linger = value == "1";
         else if (key == "pin") pinned = value == "1";
         else if (key == "tracks") tracks = std::min<unsigned>(unsigned(std::atoi(value.c_str())), track_count);
+        else if (key == "strips") strips = std::min<unsigned>(unsigned(std::atoi(value.c_str())), 64);
+        else if (key == "strip") strips_full = value != "usual";
         else { std::fprintf(stderr, "dsp-bench: no key %s\n", key.c_str()); return 1; }
     }
+    if (strips) return strip_bench(strips, strips_full, seconds, rate);
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
     busy_project(*project, *bank);
@@ -135,9 +199,7 @@ int dsp_bench(int argc, char** argv) {
     host.send({Command::Type::Compressor, 0, 0, 0, 1});
     host.send({Command::Type::Play});
     // As the audio thread: real-time, a block every period.
-    sched_param priority {};
-    priority.sched_priority = 30;
-    bool realtime = pthread_setschedparam(pthread_self(), SCHED_FIFO, &priority) == 0;
+    bool realtime = realtime_thread();
     const unsigned frames = EngineHost::block;
     const long period_ns = long(1e9 * frames / rate);
     std::vector<int32_t> out(frames * 2);

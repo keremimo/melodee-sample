@@ -36,6 +36,17 @@ def compile_and_run(test, temp, plugin, host_source, extra_objects, expected):
     test.assertIn(expected, result.stdout)
 
 
+class IdleGateTests(unittest.TestCase):
+    def test_idle_gate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            exe = Path(temp) / "idle_gate"
+            subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(ROOT / "src"), str(ROOT / "tests/idle_gate.cpp"), "-o", str(exe)], check=True)
+            result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("idle ok", result.stdout)
+
+
 @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "aarch64"
                      and all((OBJ / o).is_file() for o in OBJECTS + ["melodee/plugin/clap_instance.o"]),
                      "needs make's aarch64 objects")
@@ -44,6 +55,17 @@ class PluginHostTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.clap"
             subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
+
+    @unittest.skipUnless(shutil.which("zig"), "needs zig")
+    def test_clap_host_exits_after_a_static_runtime_plugin(self):
+        """A CLAP with zig's static libc++ crashed the host at exit once dlclose unmapped it."""
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "Test.clap"
+            subprocess.run(["zig", "c++", "-target", "aarch64-linux-gnu.2.28", "-Wno-nullability-completeness",
+                            "-std=c++20", "-O2", "-fPIC", "-DNDEBUG", "-shared",
+                            "-I" + str(ROOT / "build/deps/clap/include"), "-I" + str(ROOT / "sdk/melodee-screen"),
                             str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
             compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
 

@@ -18,8 +18,8 @@ plug-in instrument. For every page and control, read the
 
 You need:
 
-- An Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any
-  other firmware Melodee does not start and the stock app keeps running.
+- An Akai MPC Sample with firmware **1.3.0.12**, **1.4.0.7** or
+  **1.4.0.8**. On any other firmware Melodee does not start and the stock app keeps running.
 - On firmware 1.4: **Developer Mode** on, in the stock app's Settings on
   the **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
@@ -100,13 +100,15 @@ you choose what it is first ([step 4](#4-load-samples-into-a-kit) makes it a
 kit). The other tracks stay empty until you choose what they are (see
 [step 7](#7-add-a-plug-in-instrument)).
 
-To see all tracks as a mixer, press **PAD FX** and **KNOB FX** together to
-open **Tracks**.
-Each cell shows a track's number, its pattern, its type and its level. Use
-**K1** to set the selected track's level, **K2** its pan and **K3** its send
-to bus A.
+To mix the tracks, press **PAD FX** and **KNOB FX** together to open the
+mixer. Every track is a strip; the selected one is lit. Hold **+** to see
+its card (its sends, EQ or compressor), hold **−** to go back to the
+strips. Press a pad or turn the encoder to pick a track. The
+fader sets its level, **K1**–**K3** its sends A–C. Press **B2** for its EQ
+and **B3** for its compressor (see
+[The mixer](guide/mixer-and-effects.md#the-mixer)).
 
-![The Tracks page](images/screens/tracks.png)
+![The mixer](images/screens/mixer.png)
 
 ## 4. Load samples into a kit
 

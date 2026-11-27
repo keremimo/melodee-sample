@@ -40,7 +40,8 @@ void draw(Paint& p, const Snapshot& s) {
         char number[8];
         std::snprintf(number, sizeof(number), "%02u", sound + 1);
         ListRow r;
-        r.number = number; r.name = name_case(info.sounds[sound].name); r.accent = c;
+        const char* name = sound_name(info, sound, s.own_sounds); // a sound of one's own is not in the engine's table
+        r.number = number; r.name = name ? name_case(name) : "Own sound " + juce::String(sound - info.sound_count + 1); r.accent = c;
         r.current = first + row == cursor;
         if (sound == track.preset) r.fact_icon = Icon::Check; // the one loaded
         r.starred = s.ui.settings.favourite(unsigned(track.engine), sound);

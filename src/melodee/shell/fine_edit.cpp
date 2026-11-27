@@ -10,6 +10,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 
 namespace melodee {
 
@@ -29,6 +30,14 @@ void Context::fine_edit(const Binding& b, int delta) {
     focus_handle(ui, b);
     int64_t steps = int64_t(delta) * wheel_gain(pace, now, delta);
     Binding exact = b; // the handle's own limits, not the pot's stretch of them
+    if (b.kind == K::BrowseStart || b.kind == K::BrowseEnd) { // Samples' trim sheet (shell/browse_trim.h)
+        const auto h = browse_handles(project, ui.browse);
+        if (!h.frames) return;
+        const int64_t step = int64_t(fine_step(browse_view(project, ui.browse))) * steps;
+        const int64_t at = std::clamp<int64_t>(int64_t(h.at(b.kind == K::BrowseEnd)) + step, 0, h.frames);
+        if (browse_set(ui.browse, project, b.kind, int(at))) ui.browse.heard_at = std::max<uint32_t>(1, now + chop_heard_ms);
+        return;
+    }
     if (b.kind == K::PadStart || b.kind == K::PadEnd || b.kind == K::PadLoopPoint) {
         auto h = trim_handles(project, ui);
         if (!h.frames) return;

@@ -24,8 +24,8 @@ while playing, red while recording, amber while waiting for a bar to start.
 When the pads do not play the selected track, the first chip in the header
 says what they do: **TRACKS**, **PATTERNS**, **SEQUENCES**, **STEPS**,
 **PAD FX**, **LOOPS**, **LEVELS** or **CHORDS**. The button of that job is bright; on
-the mixer's Tracks page that is **PAD BANK**. Press **SAMPLE** to open the
-sound's page, where the pads play again.
+the mixer, where the pads select channels, that is **PAD BANK**. Press **SAMPLE** to
+open the sound's page, where the pads play again.
 
 Lists work the same way on every page: the symbol before a name shows what
 the row is (folder, sample, instrument, plug-in), and facts about it are at
@@ -84,7 +84,7 @@ the lit place opens without the Menu.
 | Pad | Place | Pad | Place |
 | --- | --- | --- | --- |
 | 1 | Stage | 9 | Mixer |
-| 2 | Browser | 10 | Sends |
+| 2 | Browser | 10 | – |
 | 3 | Record | 11 | Effects |
 | 4 | Chop | 12 | Looper |
 | 5 | Sequence | 13 | Song |
@@ -94,9 +94,12 @@ the lit place opens without the Menu.
 
 The Menu opens on **HERE** when the page has something to list (Stage, the
 mixer's pages, Sequences, Patterns, Roll, Motion, MOD and Step Edit), and on
-**GO** otherwise. Any other button closes the Menu and does its own job. In
-Basic (see [Settings](settings.md#basic-and-full)), pads 8, 10 and 12 are
-empty.
+**GO** otherwise. Any other button closes the Menu and does its own job.
+Pad 10 is empty. In Basic (see [Settings](settings.md#basic-and-full)),
+pads 8 and 12 are empty too.
+
+The Menu's header shows how much of the processor the tracks use (**CPU**),
+and the selected track's share (snowflake: frozen).
 
 ## Lessons
 
@@ -137,7 +140,7 @@ until they meet. Change this in [Settings](settings.md) (**KNOBS**).
 ## Undo
 
 **SHIFT** + **−** undoes, **SHIFT** + **+** redoes. Melodee keeps the last
-32 steps.
+512 steps.
 
 Hold **SHIFT** + **−** for a moment to open the undo list. It shows the
 steps, newest on top, each with its track and how long ago. **NOW** marks
@@ -199,10 +202,11 @@ creating a project clears the undo history.
 | --- | --- |
 | **PAD BANK** held, or Tracks | Tracks |
 | **SEQ** held, or Patterns | The selected track's patterns |
+| Sequences | A sequence, with copies of its patterns (see [Sequences page](sequencing.md#sequences-page)) |
 | Step Edit in STEPS mode | A step to another step |
 | Roll with marked notes | The marked notes: push the encoder to paste them at the cursor |
 | Roll, Step Edit in PLAY mode, the play pages of a keygroup, plug-in or MIDI track | A key's notes to another key |
-| A kit's play pages | Kit pads |
+| A kit's play pages | Kit pads. To copy to another kit, hold **PAD BANK** and press its pad between the source and the target. |
 | Song | The clip, placed after itself |
 | Project | The selected project |
 | Effect chains | The selected effect, placed after itself |
@@ -221,10 +225,16 @@ it is held.
 
 - On a kit page, the pads mute kit pads.
 - On other pages, the pads mute tracks.
+- On the mixer's second row (**PAD BANK**), the pads mute submixes and
+  buses.
 - **SHIFT** + pad solos.
 - **SHIFT** + **MUTE** unmutes everything.
 
 Muted pads light red. Soloed pads light white.
+
+A track mute is kept in the sequence in hand. Launching a sequence sets each
+track's mute as the sequence keeps it, at the next bar. See
+[Sequences](sequencing.md#sequences). Solo and kit pad mutes are not kept.
 
 **Mute** in [Settings](settings.md) (**SEQ**) sets what a mute does:
 

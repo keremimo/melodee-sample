@@ -26,15 +26,13 @@ a page file and a skin: [Plug-in page files](PLUGIN_PAGES.md).
 
 | Where | What the plug-in draws |
 |-------|------------------------|
-| A PLUGIN track's Edit page | its page: everything under B1-B3, 320 × 218 |
-| Stage, B1 **PANEL** (between PRESETS and EDIT) | its page |
+| Stage, B1 **PANEL** (between PRESETS and EDIT) on a PLUGIN track | its page: everything under B1-B3, 320 × 218 |
 | An effect in a track, bus or master chain | its strip: everything under the chain's slots, 320 × 144 |
 | Push on that effect | its page |
 
 - Melodee keeps **B1**–**B3**, its MENU, notices and questions, drawn over
   the page. It draws nothing over the plug-in's own controls.
-- **SHIFT** + **B3** on Edit swaps the plug-in's page and Melodee's own pages
-  of its parameters; Stage's **EDIT** is always Melodee's pages.
+- Stage's **EDIT** is always Melodee's pages of its parameters.
 - Settings > SCREEN > **Plug-in screens** off: Melodee's own pages for every
   plug-in.
 
@@ -56,6 +54,12 @@ calls `draw()` soon. With `MELODEE_SCREEN_RUN` it also runs the plug-in's
 next block though it is silent, for an input its audio side must hear
 (Melodee does not run a silent plug-in).
 
+Version 2 of Melodee's table (`melodee_screen_host_2_t`, which starts with
+`redraw` as version 1 does) adds `keys(host, keys)`: the printed buttons the
+plug-in's page takes from now on, `MELODEE_SCREEN_KEY_MUTE` and
+`MELODEE_SCREEN_KEY_ERASE`, or 0 for none. Call it when that changes, from any
+thread. See [Printed buttons](#printed-buttons).
+
 ### The frame
 
 | Field | What |
@@ -76,9 +80,29 @@ next block though it is silent, for an input its audio side must hear
 | `MELODEE_SCREEN_WHEEL` | the encoder turned | detents, clockwise positive |
 | `MELODEE_SCREEN_PUSH` | the encoder pushed and let go | 1 |
 | `MELODEE_SCREEN_STEP` | **−** or **+** | -1 or 1 |
+| `MELODEE_SCREEN_MUTE` | **MUTE** tapped, while its page takes it | 1 |
+| `MELODEE_SCREEN_ERASE` | **ERASE** tapped, while its page takes it | 1 |
 
 `shift` says whether **SHIFT** is held. The encoder held opens Melodee's MENU
 and **SHIFT** + push goes back; neither reaches the plug-in.
+
+### Printed buttons
+
+On a plug-in's page **MUTE** and **ERASE** do Melodee's jobs: **MUTE** tapped
+latches mute mode, **ERASE** has nothing to erase. A page with a list of its
+own, where something can be switched off or removed (an effect chain, a step
+list), can take their taps instead, as Melodee's own chains do: tell Melodee
+with `keys()` while such a thing is lit, and 0 when it is not (an empty slot:
+**MUTE** latches mute mode again, as on a chain's **+**).
+
+- **MUTE** tapped (pressed and let go with no pad between) comes as
+  `MELODEE_SCREEN_MUTE`. Held, with pads, it still mutes tracks.
+- **ERASE** tapped on its own comes as `MELODEE_SCREEN_ERASE`, and Melodee
+  lights **ERASE** while the page takes it. **SHIFT** + **ERASE** stays
+  Melodee's copy.
+- Only on the plug-in's page (on a track's **PANEL**, or an effect's full
+  page). On an effect's strip the chain's own **MUTE** and **ERASE** act on
+  the slot.
 
 ## K1-K3 and pickup
 
@@ -96,7 +120,8 @@ example draws a small mark there).
 **CLAP.** The plug-in's `get_extension(MELODEE_SCREEN_CLAP)` returns its
 table, `plugin` being its `clap_plugin_t*`. Melodee's
 `get_extension(MELODEE_SCREEN_CLAP_HOST)` returns the `redraw` call, `host`
-being the `clap_host_t*`.
+being the `clap_host_t*`; `get_extension(MELODEE_SCREEN_CLAP_HOST_2)` returns
+`redraw` and `keys` (null in a Melodee without it: no keys).
 
 **VST2.** Melodee first asks `effCanDo("melodeeScreen")`; a plug-in with a
 screen answers 1. Only then does it call `effVendorSpecific` (50) with index
@@ -104,10 +129,12 @@ screen answers 1. Only then does it call `effVendorSpecific` (50) with index
 `plugin` being its `AEffect*`. The plug-in finds Melodee with
 `audioMasterCanDo("melodeeScreen")` returning 1, and asks for a draw with
 `audioMasterVendorSpecific` (35), index `MELODEE_SCREEN_VST2`, value the
-flags.
+flags. Once `audioMasterCanDo("melodeeScreenKeys")` returned 1, it tells its
+keys with `audioMasterVendorSpecific`, index `MELODEE_SCREEN_VST2_KEYS`, value
+the keys.
 
-**32-bit ARM VST2.** The same. Melodee's bridge makes the calls in the
-plug-in's own process.
+**32-bit ARM VST2.** The same, without keys: Melodee's bridge makes the calls
+in the plug-in's own process, and does not pass `keys` on yet.
 
 ## Threads
 

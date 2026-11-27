@@ -14,13 +14,13 @@ void history_open(Context& c) {
     if (ui.history || ui.menu || ui.ask != UiState::Ask::None || ui.name.open() || ui.exit_open || ui.loading || card_owns_controls(ui) || ui.lesson) return;
     if (!c.edits.can_undo() && !c.edits.can_redo()) { c.notice("Nothing to undo"); return; }
     ui.history = true;
-    ui.history_row = uint8_t(history_now(unsigned(c.edits.redos())));
+    ui.history_row = uint16_t(history_now(unsigned(c.edits.redos())));
 }
 
 void history_wheel(Context& c, int delta) {
     auto& ui = c.ui;
     unsigned rows = history_rows(unsigned(c.edits.redos()), unsigned(c.edits.size()));
-    ui.history_row = uint8_t(std::clamp(int(ui.history_row) + delta, 0, int(rows) - 1));
+    ui.history_row = uint16_t(std::clamp(int(ui.history_row) + delta, 0, int(rows) - 1));
 }
 
 // Undo or redo as many steps as it takes, one at a time, as Shift + Minus / Plus would: a step that waits (a track

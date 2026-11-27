@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Which plug-in's own screen (plugin/plugin_screen.h, docs/PLUGIN_SCREENS_PLAN.md) the page in view shows, and as
-// what: its page under B1-B3 (Edit on its PLUGIN track, unless Shift + B3 swapped in Melodee's pages; Stage's PANEL;
-// an effect slot's full page, Push on it), or an effect's strip under its chain's slots. Settings > SCREEN > Plug-in
+// what: its page under B1-B3 (Stage's PANEL on its PLUGIN track; an effect slot's full page, Push on it), or an
+// effect's strip under its chain's slots. Settings > SCREEN > Plug-in
 // screens off: none. Pure, for the shell (what the rack is told) and the pages (what is drawn), so both agree.
 #pragma once
 #include "melodee/shell/bindings.h"
@@ -24,7 +24,6 @@ inline ScreenPlace plugin_screen_place(const Project& project, const UiState& ui
     if (!ui.settings.plugin_skins || !panel.has_screen || panel.status != PluginStatus::Ready) return {};
     const auto& t = project.tracks[ui.track % track_count];
     const bool own = t.engine == EngineKind::Plugin && t.plugin == panel.entry;
-    if (ui.page == PageId::Edit) return own && !ui.plugin_own_pages ? ScreenPlace {t.plugin, 0} : ScreenPlace {};
     if (ui.page == PageId::Stage)
         return own && stage_page_now(ui, t, stage_skip(project, ui, t)).kind == StageKind::PluginScreen ? ScreenPlace {t.plugin, 0} : ScreenPlace {};
     if (fx_chain_page(ui.page) && !ui.picker_open && !ui.sheet_open) {

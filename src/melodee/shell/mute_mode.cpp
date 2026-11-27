@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/mute_mode.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/effect_info.h"
 
 namespace melodee {
 
@@ -22,8 +24,26 @@ void mute_button(Context& c, bool pressed) {
     }
     if (!ui.mute) return;
     ui.mute = false;
-    // A tap turns the latch on or off; a hold (or one that muted something) leaves it as it was.
-    if (!ui.mute_used && c.now - ui.mute_down <= mute_hold_ms) ui.mute_latch = !ui.mute_latch;
+    // A tap turns the latch on or off; a hold (or one that muted something) leaves it as it was. On the mixer's FX
+    // block, with no latch to undo, a tap switches the lit effect off or on instead (held, it still mutes channels);
+    // on a plug-in's own page that takes Mute (melodee_screen.h keys()), the tap is the plug-in's.
+    if (!ui.mute_used && c.now - ui.mute_down <= mute_hold_ms) {
+        if (!ui.mute_latch && (mute_effect(c) || c.plugin_screen_key(ScreenKey::Mute))) return;
+        ui.mute_latch = !ui.mute_latch;
+    }
+}
+
+bool mute_effect(Context& c) {
+    if (!mixer_fx_lit(c.ui)) return false;
+    const int chain = channel_chain(mixer_strip(c.ui));
+    if (chain < 0) return false;
+    const auto& fx = c.project.chain(unsigned(chain));
+    const unsigned slot = c.ui.fx_cursor[UiState::cursor_of(unsigned(chain))];
+    if (slot >= fx.count()) return false; // the plus: the latch, as anywhere
+    c.toggle_bypass(unsigned(chain), slot);
+    const auto& s = fx.slots[slot];
+    c.notice(std::string(effect_info(EffectKind(s.kind)).name) + (s.bypass ? " off" : " on"));
+    return true;
 }
 
 bool pad_muted_now(const Context& c, unsigned t, unsigned kit) {
@@ -48,6 +68,19 @@ void mute_pad(Context& c, unsigned pad, bool kit_pads) {
     auto& ui = c.ui;
     ui.mute_used = true;
     pad %= 16;
+    if (mute_on_others(ui)) { // the mixer's second row: a submix mutes and solos, a bus mutes; the input and master neither
+        const int n = pad_other(ui, pad);
+        if (n < 0) return;
+        const auto kind = channel_kind(unsigned(n));
+        if (ui.shift) {
+            ui.shift_used = true;
+            if (kind == ChannelKind::Submix) c.set_channel_solo(unsigned(n), !c.project.subs[channel_sub(unsigned(n))].mix.solo);
+            return;
+        }
+        if (kind == ChannelKind::Submix) c.set_channel_mute(unsigned(n), !c.project.subs[channel_sub(unsigned(n))].mix.mute);
+        else if (kind == ChannelKind::Bus) c.set_channel_mute(unsigned(n), !c.project.buses[channel_bus(unsigned(n))].mute);
+        return;
+    }
     if (!mute_on_kit(ui, kit_pads)) { // the tracks
         const auto& track = c.project.tracks[pad];
         const auto& mix = track.mix;
@@ -84,6 +117,11 @@ void unmute_all(Context& c) {
             c.send({Command::Type::PadMute, uint8_t(t), 0, 0xffff, 0});
         }
     }
+    for (unsigned sub = 0; sub < sub_count; ++sub) { // the mixer's submixes and buses
+        if (c.project.subs[sub].mix.mute) c.set_channel_mute(strip_sub(sub), false);
+        if (c.project.subs[sub].mix.solo) c.set_channel_solo(strip_sub(sub), false);
+    }
+    for (unsigned b = 0; b < bus_count; ++b) if (c.project.buses[b].mute) c.set_channel_mute(bus_chain(b), false);
     c.notice("Unmute all");
 }
 

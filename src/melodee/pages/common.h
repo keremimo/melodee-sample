@@ -41,6 +41,9 @@ int fader_card(const Snapshot& s);
 void midi_route(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 ui::SoftKeys sound_keys(const Snapshot& s); // Stage's B1-B3 for the track (pages/stage_page.cpp): Pads and Keys, Sample held
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
+// A mixer channel's knob shade by strip number (shell/mixer_channels.h): a track's, a submix's own, a bus's (the
+// Looper's); the input ice and the master white on all three.
+juce::Colour channel_shade(unsigned strip, unsigned knob);
 juce::Colour load_colour(float load);                   // a load's: green, amber from 60 %, red from 85 % (of a block, a core)
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
@@ -104,7 +107,6 @@ void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui:
 // draws nothing over but its MENU, notices and questions.
 bool plugin_screen_shown(const Snapshot& s, uint8_t area = 0); // area 1: an effect's strip under its chain's slots
 void draw_screen_picture(ui::Paint& p, const ScreenPicture& picture, float x, float y);
-void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
 // An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
 void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 // An effect's skin strip (docs/PLUGIN_PAGES.md, Skins) under the chain row, at x, y (320 x 92), where it has one and
@@ -112,7 +114,6 @@ void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float 
 bool plugin_strip_shown(const Snapshot& s, unsigned entry);
 void draw_plugin_strip(ui::Paint& p, const Snapshot& s, float x, float y);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
-void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down);

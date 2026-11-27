@@ -38,7 +38,10 @@ Each loop is in one state: **Empty**, **Armed** (waits for its boundary),
   boundary.
 - **Boundaries**: Quantize **Bar**, **Beat** or **Off** (at once), for takes,
   plays and stops. Overdub always punches at once.
-- **Length**: Free, 1, 2, 4, 8, 16 bars; set before recording.
+- **Length**: Free, 1, 2, 4, 8, 16, 32, 64, 128 bars; set before recording.
+  A loop has 64 s of memory. A longer length gets memory made for it: the
+  first press says "making memory, press again". "Not enough memory for it"
+  when the MPC does not have that much free.
 - **Level** is the loop track's level; **Feedback** (0–100 %) is how much of
   the old layers each overdub pass keeps.
 - **Undo** takes the last overdub pass back, again redoes it (the layer count

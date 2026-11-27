@@ -4,7 +4,8 @@
 // with a name and a tempo of its own (model/scene_links.h, shell/sequences.h). A pattern picked by hand is kept in
 // the sequence in hand (pick()); launching a sequence queues each track's kept pattern for the next bar, stops a
 // track kept off, and leaves a track it keeps nothing for playing. An empty kept pattern takes the sequence's
-// length. Its tempo takes over on that bar. A pattern's follow action (model/follow.h) is the audio thread's
+// length. Its tempo takes over on that bar, and the mutes it keeps. A mute set by hand is kept in the sequence in
+// hand too (keep_mute()). A pattern's follow action (model/follow.h) is the audio thread's
 // (EngineHost::follow); here the shell tells it which tracks play a chain (their follow actions wait) and follows
 // what it brought, so a track's pattern is the one playing. Follow actions, chains and the song keep nothing.
 #include "melodee/shell/context.h"
@@ -28,6 +29,18 @@ bool Context::keep(unsigned t, int target) {
     bool first = keep_pick(project, n, t % track_count, target, stopped_now());
     for (unsigned k = 0; k < track_count; ++k) dirty |= project.tracks[k].in_scene[n] != before[k];
     return first;
+}
+
+void Context::keep_mute(unsigned t, bool on) {
+    t %= track_count;
+    if (host.song_playing() || !project.tracks[t].used()) return; // the song plays the tracks: nothing is kept
+    const unsigned n = project.scene % pattern_count;
+    std::array<uint8_t, track_count> before {};
+    std::array<bool, track_count> muted {};
+    for (unsigned k = 0; k < track_count; ++k) { before[k] = project.tracks[k].in_scene[n]; muted[k] = scene_muted(project.tracks[k], n); }
+    melodee::keep_mute(project, n, t, on, stopped_now());
+    for (unsigned k = 0; k < track_count; ++k)
+        dirty |= project.tracks[k].in_scene[n] != before[k] || scene_muted(project.tracks[k], n) != muted[k];
 }
 
 bool Context::pick(unsigned t, unsigned p) {
@@ -80,6 +93,15 @@ void Context::launch_scene(unsigned scene, bool quiet) {
         send({Type::SceneTempo, 0, 0, 0, int16_t(s.tempo)});
         dirty = true;
     }
+    if (const SceneMutes mutes = scene_mutes_of(project, scene); mutes.set) { // its mutes, on that bar too
+        for (unsigned t = 0; t < track_count; ++t) {
+            if (!(mutes.set >> t & 1)) continue;
+            const bool on = mutes.muted >> t & 1;
+            dirty |= project.tracks[t].mix.mute != on;
+            project.tracks[t].mix.mute = on;
+        }
+        send({Type::SceneMutes, 0, 0, mutes.set, int16_t(mutes.muted)});
+    }
     project.scene = uint8_t(scene);
     if (quiet) return;
     std::string text = "SEQ " + std::to_string(scene + 1);
@@ -124,7 +146,10 @@ static SceneState scene_state(const Project& project, unsigned scene) {
     SceneState state;
     state.index = uint8_t(scene % pattern_count);
     state.scene = project.scenes[state.index];
-    for (unsigned t = 0; t < track_count; ++t) state.kept[t] = project.tracks[t].in_scene[state.index];
+    for (unsigned t = 0; t < track_count; ++t) {
+        state.kept[t] = project.tracks[t].in_scene[state.index];
+        if (scene_muted(project.tracks[t], state.index)) state.muted = uint16_t(state.muted | 1u << t);
+    }
     return state;
 }
 
@@ -143,6 +168,32 @@ void Context::clear_scene(unsigned scene) {
     edits.push(std::move(edit));
     dirty = true;
     notice(name + " cleared");
+}
+
+// Shift + Erase on Sequences, then two pads: sequence `to` becomes a copy of `from` (its name, tempo, colour and
+// mutes), each pattern it keeps copied into the track's next free pattern so the two are edited apart
+// (copy_scene_links); one undo. A track with no free pattern keeps the same pattern in both.
+void Context::copy_scene(unsigned from, unsigned to) {
+    from %= pattern_count; to %= pattern_count;
+    if (from == to) return;
+    const std::string a = "SEQ " + std::to_string(from + 1), b = "SEQ " + std::to_string(to + 1);
+    if (ui.recording) { notice("Copy: not in a take"); return; }
+    Edit edit;
+    edit.what = "Copy " + a + " to " + b;
+    edit.track = ui.track;
+    edit.scene_before = std::make_unique<SceneState>(scene_state(project, to));
+    std::vector<PatternCopy> copies;
+    const unsigned shared = copy_scene_links(project, patterns, from, to, copies);
+    for (const auto& c : copies) {
+        Pattern made = patterns.at[c.track][c.from];
+        edit.patterns_before.push_back({c.track, c.into, patterns.at[c.track][c.into]});
+        edit.patterns_after.push_back({c.track, c.into, std::move(made)});
+    }
+    for (const auto& p : edit.patterns_after) restore_pattern(p.track, p.pattern, p.value);
+    edit.scene_after = std::make_unique<SceneState>(scene_state(project, to));
+    edits.push(std::move(edit));
+    dirty = true;
+    notice(a + " to " + b + (shared ? ", " + std::to_string(shared) + " shared" : std::string()));
 }
 
 // The selected track's pattern's follow action, from its cards on SCENES (one undo a turn: the pattern's).

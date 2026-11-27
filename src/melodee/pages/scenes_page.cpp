@@ -5,7 +5,8 @@
 // them), each keeping a pattern or off for each track (model/scene_links.h). A pad launches its sequence at the next
 // bar: each track on its kept pattern, a track kept off stops, a track it keeps nothing for plays on
 // (shell/sequences.h), the scene's tempo with it. A cell is tinted when the sequence keeps patterns, plain when it
-// keeps nothing, and marked – when it keeps only silence. Erase + pad clears it (one undo). Push names the scene in hand,
+// keeps nothing, and marked – when it keeps only silence. Erase + pad clears it (one undo). Shift + Erase, then two pads,
+// copies one onto another with copies of its patterns (shell/erase_copy.h). Push names the scene in hand,
 // the wheel sets its tempo (below 30 BPM: none of its own), Shift + wheel its
 // colour (issue 19: its cell and pad in it; Shift held shows it). The cards are the
 // selected track's pattern's follow action (model/follow.h): K1 FOLLOW, K2
@@ -13,10 +14,11 @@
 // odds the first leaves); Shift + B3 ALL puts it on every track's pattern in its
 // column. Minus / Plus move the track. Beside the grid: the scene in hand's
 // name and tempo, the follow action in glyphs, and a mark a track (a dot on
-// what the sequence keeps, dim off it, a square kept off, a red ring stopped
-// by a follow action).
+// what the sequence keeps, dim off it, red when muted, a square kept off, a
+// red ring stopped by a follow action).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/erase_copy.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/sequences.h"
 #include "melodee/ui/widgets.h"
@@ -126,15 +128,17 @@ void draw(Paint& p, const Snapshot& s) {
         float tx = x + (t % 8) * step, ty = dy - (t < 8 ? 10 : 0);
         if (!tr.used()) { p.fill(tx + 1, ty + 2, dot - 2, 1.5f, colour::line); continue; }
         bool stopped = s.playing && !s.song_playing && s.positions[t] < 0 && !tr.off;
-        if (tr.off) p.ring(tx, ty, dot, dot, track_colour(t), 1, 1.2f);
+        const juce::Colour ink = tr.mix.mute ? colour::rec : track_colour(t); // muted (kept in the sequence): red
+        if (tr.off) p.ring(tx, ty, dot, dot, ink, 1, 1.2f);
         else if (stopped) p.ring(tx, ty, dot, dot, colour::rec, 3, 1.2f);
-        else p.fill(tx, ty, dot, dot, own_pattern(s.project, s.ui, t) ? track_colour(t).withAlpha(0.3f) : track_colour(t), 3);
+        else p.fill(tx, ty, dot, dot, own_pattern(s.project, s.ui, t) ? ink.withAlpha(0.3f) : ink, 3);
     }
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down) return;
     if (c.ui.scene_capture) { c.capture_scene(c.ui.pad_pattern(pad)); return; } // CAPTURE: this sequence keeps what plays
+    if (c.ui.copying == UiState::Copying::Scenes) { scene_copy_pad(c, pad); return; } // Shift + Erase: the one to copy, then where
     if (c.ui.erase) { c.clear_scene(c.ui.pad_pattern(pad)); return; } // Erase + pad: it keeps nothing, no name, tempo or colour
     c.launch_scene(c.ui.pad_pattern(pad));
 }

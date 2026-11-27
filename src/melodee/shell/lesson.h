@@ -79,14 +79,14 @@ inline const Lesson& lesson_at(unsigned n) {
         {"SEQ + PAD 2", K::Pad, 1, w(B::Seq)},
         {"PRESS STOP", K::Button, b(B::Stop)},
     };
-    // Mix: the mixer opened, a track's level and pan, its effects, and back.
+    // Mix: the mixer opened, a track's send, another track picked, its effects, and back (docs/MIXER_PLAN.md).
     static const LessonStep mix[] {
         {"LOADING KIT", K::Wait},
-        {"PAD FX + KNOB FX", K::Button, b(B::KnobFx), w(B::PadFx), PageId::Tracks},
+        {"PAD FX + KNOB FX", K::Button, b(B::KnobFx), w(B::PadFx), PageId::Mixer},
         {"TURN K1", K::Knob, 0},
-        {"TURN K2", K::Knob, 1},
-        {"PRESS B3", K::Button, b(B::TopRight), -1, PageId::Rack},
-        {"PRESS B1", K::Button, b(B::TopLeft), -1, PageId::Tracks},
+        {"TAP PAD 2", K::Pad, 1},
+        {"SHIFT + KNOB FX", K::Button, b(B::KnobFx), w(B::Shift), PageId::Rack},
+        {"PRESS B1", K::Button, b(B::TopLeft), -1, PageId::Mixer},
         {"PRESS SAMPLE", K::Button, b(B::Sample), -1, PageId::Stage},
     };
     // Shape a pad: its end on Trim, then its tune.

@@ -22,6 +22,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/new_track.h"
+#include "melodee/model/smf.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 #include <cmath>
@@ -258,7 +259,8 @@ void draw(Paint& p, const Snapshot& s) {
         juce::String length = juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
         unsigned stems = 0;
         for (const auto& tr : s.project.tracks) stems += tr.used();
-        static const char* const formats[] {"32-BIT FLOAT", "24-BIT DITHER", "16-BIT DITHER", "", "SMF 96 PPQ", "PROJECT", "ABLETON LIVE"};
+        static_assert(smf_ppq == 960, "the MIDI file's clock, as the label says");
+        static const char* const formats[] {"32-BIT FLOAT", "24-BIT DITHER", "16-BIT DITHER", "", "SMF 960 PPQ", "PROJECT", "ABLETON LIVE"};
         juce::String sub = kind == export_kinds::stems ? juce::String(stems) + " STEMS" : juce::String(formats[kind]);
         juce::String value = project_file ? juce::String(stems) + (stems == 1 ? " TRACK" : " TRACKS") : bars ? length : juce::String("P");
         key_tiles(p, {KeyTile {}, value_tile(made, value, sub, true), // the wheel picks

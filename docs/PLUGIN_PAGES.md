@@ -23,7 +23,7 @@ At load, the first file that is for the plug-in wins:
    |----------|---------------------------------------------------------|
    | VST3     | `<name>.vst3/Contents/Resources/melodee-pages.json`     |
    | LV2      | `<name>.lv2/melodee-pages.json`                         |
-   | Open MPC | `melodee-pages.json` beside `plugin-meta.xml`           |
+   | MPC      | `melodee-pages.json` beside `plugin.json` or `plugin-meta.xml` |
    | CLAP     | `<name>.melodee-pages.json` beside `<name>.clap`        |
    | VST2     | `<name>.melodee-pages.json` beside `<name>.so`          |
 

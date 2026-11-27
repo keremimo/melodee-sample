@@ -84,8 +84,19 @@ void draw_menu(Paint& p, const Snapshot& s) {
     p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg);
     Header h = header_of(s); // the transport and the tempo as on every page; the MENU's own chips in place of the page's
     h.left.clear(); h.right.clear(); h.lead = 0;
-    h.left.push_back(chip("MENU", colour::text));
-    h.left.push_back(pill("GO"));
+    h.left.push_back(chip("MENU", colour::text)); // GO is lit on B3
+    // What the tracks take of each audio block, all together, and the selected track's share (snow: frozen), as the
+    // Tracks page showed them (docs/MIXER_PLAN.md step 6, decision 5).
+    const float all = s.machine.render_load;
+    h.left.push_back(pill(Icon::Chip, "CPU " + juce::String(int(std::lround(all * 100))) + " %", load_colour(all)));
+    if (s.track().used()) {
+        const auto& f = s.freeze[s.ui.track % track_count];
+        const float load = s.machine.track_load[s.ui.track % track_count];
+        h.right.push_back(pill(f.state == FreezeState::Deep ? Icon::DeepSnow : f.frozen() ? Icon::Snow : Icon::Chip,
+                               "T" + juce::String(s.ui.track % track_count + 1) + juce::String::fromUTF8(" \xc2\xb7 ")
+                                   + juce::String(int(std::lround(load * 100))) + " %",
+                               f.frozen() ? colour::ice : load_colour(load)));
+    }
     h.right.push_back(label(s.project.name));
     header(p, h);
     constexpr float gap = 4, tw = (zone::width - 2 * zone::pad - 3 * gap) / 4, th = 36, top = zone::picture_y + 2;

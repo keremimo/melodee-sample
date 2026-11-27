@@ -21,7 +21,7 @@
 //   One that is not a newer signed release is deleted again.
 // - A plug-in zip (a release's -mpc-sample.zip). It goes to Melodee/Plugins
 //   and is unzipped there at once (plugin/plugin_files.h, unzip_plugins());
-//   the picker lists it the next time it opens. One that will not unzip is
+//   an open picker lists it at once. One that will not unzip is
 //   deleted again, with the reason. A plug-in listed there can be deleted
 //   from the page too.
 //
@@ -40,6 +40,7 @@ struct Facts {
     uint8_t phase = 0, error = 0;        // UpdatePhase, UpdateError (shell/update.h)
     uint64_t scans = 0;                  // counts card checks for updates
     uint64_t card_free = 0, card_total = 0; // bytes, as System reads them
+    bool file_sharing = false;           // the SMB server serves the card (base drivers/file_share.h): offered by name
 };
 
 class WebApp {
@@ -51,7 +52,7 @@ public:
     void publish(const Facts& facts);
     bool take_rescan() { return rescan.exchange(false); } // an update zip came: check the card again now
     bool take_note(std::string& text);                    // "Installed Melodee Poly", for the header
-    bool take_files_changed() { return files_changed.exchange(false); } // the Files tab changed the card: look again
+    bool take_files_changed() { return files_changed.exchange(false); } // the page changed the card: look again
 
 private:
     Reply handle(const Request& request, const Body& body);

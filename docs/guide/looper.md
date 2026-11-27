@@ -22,7 +22,7 @@ where it plays, its state and its length. Red: recording. Amber: overdub.
 Grey: stopped. The header shows the quantize setting (a magnet with
 **BAR**, **BEAT** or **OFF**), the selected loop and its layers.
 
-- **K1** selects the loop, **K2** its length (Free, 1, 2, 4, 8 or 16 bars),
+- **K1** selects the loop, **K2** its length (Free, 1, 2, 4, 8, 16, 32, 64 or 128 bars),
   **K3** its level. The encoder and **−** / **+** also select the loop.
 - **SHIFT** + **K1** feedback, **SHIFT** + **K2** quantize (Bar, Beat,
   Off), **SHIFT** + **K3** what happens after a take (Play, Overdub, Stop).

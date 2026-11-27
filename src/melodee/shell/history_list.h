@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-// The undo list (ease roadmap item 2): Shift + Minus held history_hold_ms opens the steps kept (History, 32), newest
+// The undo list (ease roadmap item 2): Shift + Minus held history_hold_ms opens the steps kept (History: 512, within its memory budget), newest
 // on top. A tap still undoes one step, on its release. The rows, top down: the steps undone (redo's, the newest
 // first), then the steps done (undo's, newest first), then START, the state before them all. The cursor opens on
 // NOW, the state in hand: the first step done, or START when every step is undone. The wheel, Minus / Plus move it;

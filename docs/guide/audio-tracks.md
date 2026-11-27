@@ -75,7 +75,8 @@ the recording it plays. Turn the encoder for fine steps.
 | **FADES** (**B1** again) | **FADE IN** | **FADE OUT** | **REVERSE** |
 | **WARP** (**B1** a third time) | **WARP**: Off, Stretch or Repitch | **BPM** | **SEMI** (**SHIFT**: **FINE**) |
 
-**B3** opens **MIX**, **SENDS** and **FX**, as on other tracks.
+**B3** opens **FX**, as on other tracks. The track's level, pan and sends are on the
+[mixer](mixer-and-effects.md#the-mixer).
 
 ## Patterns and the Song
 

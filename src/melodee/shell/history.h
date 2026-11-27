@@ -54,12 +54,30 @@ struct TrackState {
 // Parity phase 10: the rest a pot gesture or a page's button may change.
 // Every track's mix strip (level, pan, send and its bus; mute and solo are
 // performance, left out) and the buses' returns.
+// Every strip (the mixer, by strip number), each track's output (Mix::out) and the submixes' mix too.
+inline bool same_strip(const Strip& a, const Strip& b) {
+    for (unsigned p = 0; p < unsigned(StripPart::Count); ++p) if (strip_get(a, StripPart(p)) != strip_get(b, StripPart(p))) return false;
+    return true;
+}
 struct MixState {
     std::array<uint8_t, track_count> level {};
     std::array<std::array<uint8_t, bus_count>, track_count> sends {}; // each track's send into each bus
     std::array<int8_t, track_count> pan {};
     std::array<uint8_t, bus_count> returns {};
-    bool operator==(const MixState& o) const { return level == o.level && sends == o.sends && pan == o.pan && returns == o.returns; }
+    std::array<Strip, strip_channels> strips {};
+    std::array<uint8_t, track_count> outs {};
+    // The submixes' level, pan and sends (their mute and solo are performance, as a track's).
+    std::array<uint8_t, sub_count> sub_level {};
+    std::array<int8_t, sub_count> sub_pan {};
+    std::array<std::array<uint8_t, bus_count>, sub_count> sub_sends {};
+    bool input_wet = false; // the mixer's input: takes after its strip
+    bool operator==(const MixState& o) const {
+        if (input_wet != o.input_wet) return false;
+        if (!(level == o.level && sends == o.sends && pan == o.pan && returns == o.returns && outs == o.outs)) return false;
+        if (!(sub_level == o.sub_level && sub_pan == o.sub_pan && sub_sends == o.sub_sends)) return false;
+        for (unsigned n = 0; n < strip_channels; ++n) if (!same_strip(strips[n], o.strips[n])) return false;
+        return true;
+    }
 };
 // A track's name and whether it is one of its own (Tracks, Shift + Push): nothing else of the track changes with it.
 struct TrackName {
@@ -148,6 +166,7 @@ struct SceneState {
     uint8_t index = 0;
     Scene scene;
     std::array<uint8_t, track_count> kept {};
+    uint16_t muted = 0; // the tracks it keeps muted, a bit each (Track::scene_mutes)
 };
 
 struct Edit {
@@ -184,11 +203,42 @@ struct Edit {
     std::unique_ptr<PluginSwap> plugin; // a plug-in replaced (its track's name and pads in track_before / after)
     std::unique_ptr<SceneState> scene_before, scene_after; // a sequence kept or cleared
     std::unique_ptr<JamList> jams_before, jams_after;      // a jam deleted (JAMS' ERASE)
+    size_t bytes = 0;                                      // what it holds, as History counted it when kept (edit_bytes)
 };
+
+// The memory an edit holds: itself and the copies it keeps, their notes, Motion and plug-in states included. Counted
+// once, when it is kept (a take that grows its edit afterwards is not counted again).
+inline size_t pattern_bytes(const Pattern& p) {
+    return sizeof(Pattern) + p.events.size() * sizeof(Event) + p.motion.size() * sizeof(MotionPoint) + p.lanes.size() * sizeof(LaneLength)
+         + p.euclids.size() * sizeof(EuclidLane) + p.punches.size() * sizeof(PatternPunch)
+         + p.feel.groove_offsets.size() * sizeof(int16_t) + p.feel.groove_levels.size();
+}
+inline size_t edit_bytes(const Edit& e) {
+    size_t n = sizeof(Edit) + e.what.size() + (e.pads_before.size() + e.pads_after.size()) * sizeof(PadState);
+    for (const auto* p : {e.pattern_before.get(), e.pattern_after.get()}) if (p) n += pattern_bytes(*p);
+    for (const auto* t : {e.track_before.get(), e.track_after.get()})
+        if (t) { n += sizeof(TrackState); for (const auto& p : t->patterns) n += pattern_bytes(p) - sizeof(Pattern); }
+    for (const auto* list : {&e.column_before, &e.column_after}) for (const auto& c : *list) n += sizeof(c) + pattern_bytes(c.second);
+    for (const auto* list : {&e.patterns_before, &e.patterns_after}) for (const auto& c : *list) n += sizeof(c) + pattern_bytes(c.value);
+    if (e.song_before) n += sizeof(Song);
+    if (e.song_after) n += sizeof(Song);
+    for (const auto* m : {e.motion_before.get(), e.motion_after.get()})
+        if (m) { n += sizeof(TrackMotion); for (const auto& lane : m->lanes) n += lane.size() * sizeof(MotionPoint); }
+    n += (e.chain_before ? sizeof(Chain) : 0) + (e.chain_after ? sizeof(Chain) : 0) + (e.mix_before ? sizeof(MixState) : 0)
+       + (e.mix_after ? sizeof(MixState) : 0) + (e.sound_before ? sizeof(SoundState) : 0) + (e.sound_after ? sizeof(SoundState) : 0)
+       + (e.master_before ? sizeof(MasterState) : 0) + (e.master_after ? sizeof(MasterState) : 0)
+       + (e.chop_before ? sizeof(ChopState) : 0) + (e.chop_after ? sizeof(ChopState) : 0);
+    if (e.plugin) n += sizeof(PluginSwap) + e.plugin->state_before.size() + e.plugin->state_after.size();
+    for (const auto* j : {e.jams_before.get(), e.jams_after.get()})
+        if (j) for (const auto& log : j->jams) n += sizeof(log) + log.bars.size() * sizeof(JamBar);
+    return n;
+}
 
 class History {
 public:
-    static constexpr size_t depth = 32;
+    // The last 512 steps, as long as what they hold stays under `budget` (the oldest go first; the newest always stays).
+    static constexpr size_t depth = 512;
+    static constexpr size_t budget = size_t(64) << 20;
     // Freeze plan F2c: asked before an edit is kept; false: it is not (the owner put back what it changed).
     bool (*gate)(void* owner, Edit& edit) = nullptr;
     void* gate_owner = nullptr;
@@ -196,16 +246,20 @@ public:
         ++pushes;
         if (gate && !gate(gate_owner, edit)) return;
         edit.at = clock ? *clock : 0;
+        edit.bytes = edit_bytes(edit);
+        for (const auto& e : redo_) bytes_ -= e.bytes;
         redo_.clear();
+        bytes_ += edit.bytes;
         undo_.push_back(std::move(edit));
-        if (undo_.size() > depth) undo_.pop_front();
+        while (undo_.size() > depth || (bytes_ > budget && undo_.size() > 1)) { bytes_ -= undo_.front().bytes; undo_.pop_front(); }
     }
     // The edit to take back (or do again), moved to the other list; nullptr when there is none.
     Edit* undo() { return step(undo_, redo_); }
     Edit* redo() { return step(redo_, undo_); }
     bool can_undo() const { return !undo_.empty(); }
     bool can_redo() const { return !redo_.empty(); }
-    void clear() { undo_.clear(); redo_.clear(); }
+    void clear() { undo_.clear(); redo_.clear(); bytes_ = 0; }
+    size_t bytes() const { return bytes_; } // what the steps hold, undo's and redo's
     size_t size() const { return undo_.size(); }
     const Edit* last() const { return undo_.empty() ? nullptr : &undo_.back(); }
     Edit* latest() { return undo_.empty() ? nullptr : &undo_.back(); }
@@ -221,11 +275,12 @@ public:
 
 private:
     std::deque<Edit> undo_, redo_;
-    static Edit* step(std::deque<Edit>& from, std::deque<Edit>& to) {
+    size_t bytes_ = 0;
+    Edit* step(std::deque<Edit>& from, std::deque<Edit>& to) {
         if (from.empty()) return nullptr;
         to.push_back(std::move(from.back()));
         from.pop_back();
-        if (to.size() > depth) to.pop_front();
+        if (to.size() > depth) { bytes_ -= to.front().bytes; to.pop_front(); }
         return &to.back();
     }
 };

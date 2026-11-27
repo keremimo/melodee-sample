@@ -16,14 +16,14 @@
 namespace melodee {
 
 // `entry` used by a track not in `asleep` (a bit a track: its plug-in or a plug-in effect on its chain), or by a
-// bus's or the master's chain.
+// bus's, the master's or a submix's chain.
 inline bool plugin_used_awake(const Project& project, unsigned entry, uint32_t asleep) {
     for (unsigned t = 0; t < track_count; ++t) {
         if ((asleep >> t) & 1) continue;
         const auto& track = project.tracks[t];
         if (track.engine == EngineKind::Plugin && track.plugin == entry) return true;
     }
-    for (unsigned n = 0; n < chain_count; ++n) {
+    for (unsigned n = 0; n < mix_chain_count; ++n) { // the submixes' chains too
         if (n < track_count && ((asleep >> n) & 1)) continue;
         for (const auto& s : project.chain(n).slots)
             if (s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry) return true;

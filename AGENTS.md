@@ -1,6 +1,6 @@
 # melodee-sample
 
-Melodee, a groovebox app for the MPC Sample AC50 1.3.0.12 and 1.4.0.7, on the
+Melodee, a groovebox app for the MPC Sample AC50 1.3.0.12, 1.4.0.7 and 1.4.0.8, on the
 sample-base runtime. The base is the `base/` git submodule; its AGENTS.md
 rules (no stock app injection, no firmware or proprietary assets, bounded
 audio/MIDI queues, no allocation, locks or file I/O in `render()`, screen

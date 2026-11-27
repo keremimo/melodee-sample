@@ -74,11 +74,12 @@ void draw(Paint& p, const Snapshot& s) {
     float span = float(length) * shown / TakeRecorder::columns; // the frames across the picture
     unsigned frame_bars = going && length < TakeRecorder::max_frames && bar_frames > 0 ? std::max(1u, unsigned(length / bar_frames + 0.5)) : bars;
     unsigned now_bar = going && bar_frames > 0 ? unsigned(s.take.frames / bar_frames) : 0;
-    if (frame_bars > 1 && frame_bars <= 16)
-        for (unsigned b = 0; b < frame_bars; ++b) {
+    const unsigned every = (frame_bars + 15) / 16; // up to 16 bars numbered; a longer take every few bars
+    if (frame_bars > 1)
+        for (unsigned b = 0; b < frame_bars; b += every) {
             float bx = x + w * b / frame_bars;
             if (b) p.fill(bx, y, 1, wh, colour::line);
-            bool lit = going && b == now_bar;
+            bool lit = going && now_bar >= b && now_bar < b + every;
             if (bx + 20 > x + w - tw - 22) continue; // clear of the time at the corner
             p.text(juce::String(b + 1), bx + 3, zone::picture_y + 1, 24, 16, plain(lit ? colour::text : colour::dim, type::small, Weight::SemiBold));
         }

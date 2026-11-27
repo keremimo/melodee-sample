@@ -19,6 +19,7 @@
 #include "melodee/shell/features.h"
 #include "melodee/shell/sequences.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/model/step_order.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 
@@ -28,6 +29,15 @@ using namespace ui;
 
 constexpr float cell_w = 47, cell_h = 32.5f, cell_gap = 3, grid_x = zone::pad, grid_y = zone::picture_y + 3;
 constexpr float list_x = 214, list_w = zone::width - zone::pad - list_x;
+
+// A track's direction as its play mark: forward, backward (REV), shuffled (RND, Shift + Loop).
+Icon direction_icon(const Track& track) {
+    switch (direction_of(track.direction)) {
+    case PlayDirection::Reverse: return Icon::PlayBack;
+    case PlayDirection::Random: return Icon::Dice;
+    default: return Icon::Play;
+    }
+}
 
 // The sequence in view: the sequence in hand.
 unsigned scene_of(const Project& project, const UiState& ui) { return sequence_in_view(project, ui); }
@@ -58,7 +68,7 @@ void draw_cell(Paint& p, const Snapshot& s, unsigned k) {
     auto number = juce::String(n + 1);
     auto style = plain(ink, type::small, Weight::Bold);
     p.text(number, x + 5, y + 3, 24, 13, style);
-    if (playing) icon(p, Icon::Play, x + cell_w - 12, y + 4, 8, colour::bg, 1.4f);
+    if (playing) icon(p, direction_icon(track), x + cell_w - 12, y + 4, 8, colour::bg, 1.4f);
     else if (queued) p.text("NEXT", x + cell_w - 34, y + 3, 30, 13, plain(c, type::small, Weight::Bold), juce::Justification::centredRight);
     else if (notes && sketch.follows) icon(p, Icon::ArrowRight, x + cell_w - 12, y + 4, 8, colour::sec, 1.4f); // a follow action
     if (notes && sketch.follows && playing) icon(p, Icon::ArrowRight, x + cell_w - 22, y + 4, 8, colour::bg, 1.4f);
@@ -99,15 +109,21 @@ void draw_tracks(Paint& p, const Snapshot& s, unsigned first) {
             p.text(juce::String::fromUTF8("\xe2\x80\x93"), list_x + 22, y, 20, rh, plain(colour::dim, type::small));
             continue;
         }
-        icon(p, Icon::Play, list_x + 21, cy - 3.5f, 7, c, 1.2f);
+        icon(p, direction_icon(track), list_x + 21, cy - 3.5f, 7, c, 1.2f); // its direction: forward, REV, RND
         float nw = p.text(juce::String(live + 1), list_x + 31, y, 22, rh, plain(colour::text, type::small, Weight::SemiBold));
+        float after = list_x + 33 + nw;
+        if (track.speed != speed_normal) // its speed when not x1 (Shift + K3)
+            after += 2 + p.text(juce::String::fromUTF8(speed_name(track.speed)), after, y, 40, rh, plain(colour::sec, type::small, Weight::SemiBold));
         bool own = own_pattern(s.project, s.ui, t); // off what the sequence in hand keeps for it
-        if (own) icon(p, Icon::NotEqual, list_x + 33 + nw, cy - 4.5f, 9, colour::text, 1.3f);
-        float bx = list_x + (own ? 66 : 54), bw = list_w - (own ? 70 : 58);
+        if (own) { icon(p, Icon::NotEqual, after, cy - 4.5f, 9, colour::text, 1.3f); after += 11; }
+        float bx = std::max(list_x + 54, after + 4), bw = list_x + list_w - 4 - bx;
+        if (bw < 12) continue; // no room left for how far along
         p.fill(bx, cy - 1, bw, 2, colour::line, 1);
         uint32_t length = std::max<uint32_t>(s.sketches[t][live].length, 1);
         float done = s.playing && s.positions[t] >= 0 ? float(uint32_t(s.positions[t]) % length) / length : 0;
-        if (done > 0) p.fill(bx, cy - 1, bw * done, 2, c, 1);
+        if (direction_of(track.direction) == PlayDirection::Random) { // shuffled: where it plays, as a mark
+            if (s.playing && s.positions[t] >= 0) p.fill(bx + (bw - 3) * done, cy - 2, 3, 4, c, 1);
+        } else if (done > 0) p.fill(bx, cy - 1, bw * done, 2, c, 1);
     }
 }
 
@@ -128,8 +144,11 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(bank_pill(s));
     // Rec Quantize (Shift + Pad 10) on or off, after the scene: the header leaves it out when there is no room. Q is K2's card.
     h.left.push_back(pill(Icon::Magnet, s.ui.settings.rec_quantize ? "ON" : "OFF", s.ui.settings.rec_quantize ? colour::mid : colour::dim));
-    if (s.track().speed != speed_normal) // the track plays its patterns at a speed (Tracks, Shift + K1)
-        h.right.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), c));
+    const auto direction = direction_of(s.track().direction); // its speed (Shift + K3) and direction (Shift + Loop)
+    if (s.track().speed != speed_normal || direction != PlayDirection::Forward) {
+        juce::String speed = s.track().speed != speed_normal ? juce::String::fromUTF8(speed_name(s.track().speed)) : juce::String(direction_name(direction));
+        h.right.push_back(direction == PlayDirection::Forward ? pill(speed, c) : pill(direction_icon(s.track()), speed, c));
+    }
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"PATTERNS", "ROLL", motion_key(s)}, 0, c};
     keys.dots[0] = 2; keys.dot_at[0] = 1; // B1's two pages: Sequences, Patterns

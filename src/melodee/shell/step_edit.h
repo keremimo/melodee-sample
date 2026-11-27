@@ -67,6 +67,18 @@ void erase_event(Context& c);
 // A step written past the pattern's end: the pattern grows to the end of that step's bar and the caret stands on it
 // (shell/spare_bar.h). False when it cannot grow there.
 bool grow_to_step(Context& c, unsigned step);
+// Step SOUND's sounds on the pads (shell/step_sounds.h): SAMPLE SELECT opens them for the held step (or the caret's
+// on the SOUND cards) and closes them (false: not Step Edit's, the sample browser opens); a pad gives the step that
+// pad's sample (on SLICES that slice), heard once; Minus / Plus the track the pads show, Pad Bank its bank; the wheel
+// the next or previous sound of them all; B1 CLEAR the step back to its pad's own; B2 SLICES.
+bool sounds_select(Context& c);
+void sounds_close(Context& c);
+void sounds_pad(Context& c, unsigned pad);
+void sounds_track_step(Context& c, int way);
+void sounds_bank_step(Context& c, int way);
+void sounds_walk(Context& c, int way);
+void sounds_clear(Context& c);
+void sounds_slices(Context& c);
 // Step entry (round 2, step-edit2 C; pages/step_edit_page.cpp). A pad down writes its key at the caret
 // (UiState::step_cursor) with the entry's length, velocity and chance, heard as it goes in (a chord: each pad held,
 // one undo for the step); when the last pad held lets go the caret moves on a step of Q. REST moves it on without

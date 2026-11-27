@@ -64,6 +64,7 @@ public:
     bool screenInput (const melodee_screen_input& input, bool& used) override;
     bool screenControls (std::array<int, 3>& indices) override;
     bool takeRedraw() override { return redraw.exchange (false, std::memory_order_acq_rel); }
+    uint32_t screenKeys() const override { return keys.load (std::memory_order_acquire); }
     bool wantsProcess() const override { return runAsked.load (std::memory_order_acquire); }
 
 private:
@@ -92,6 +93,7 @@ private:
     mutable std::recursive_mutex mainLock; // every dispatcher call but the audio thread's
     const melodee_screen* screen = nullptr;
     std::atomic<bool> redraw { false }, runAsked { false };
+    std::atomic<uint32_t> keys { 0 }; // the printed buttons its screen's page takes (MELODEE_SCREEN_VST2_KEYS)
 };
 
 } // namespace melodee

@@ -68,12 +68,13 @@ has no **LAYERS** page (see [Sampled instruments](#sampled-instruments)).
 **AMP ENV**: **K1** attack, **K2** decay (release in Note On mode), **K3**
 velocity sensitivity. At 100 %, a hit at velocity 64 plays 6 dB below a
 full hit, and softer hits quieter still. **SHIFT** + **K2** sets whether
-decay starts from the start or the end.
+decay starts from the start or the end. From the start, a one shot fades
+to silence over its decay; sustain is for Note On mode.
 
 **SENDS**: the last pad's own sends. **K1** sets the pad's send to the bus
-shown, **K2** selects bus A–D, **K3** the bus return, as on the mixer's
-Sends page. **SHIFT** + **K1** sets the send of the whole kit track
-(**KIT SEND**). A pad's send is taken after its
+shown, **K2** selects bus A–D, **K3** the bus return. The kit track's own
+sends are on the [mixer](mixer-and-effects.md#sends). A pad's send is taken
+after its
 Pad FX, volume and pan, and follows the kit's level, pan and mute. The pads
 light as bright as their send to the bus shown; pads that send nothing stay
 dark. With Seq Record on, turning a pad's send writes a lane of that pad.
@@ -93,7 +94,8 @@ to play chords. An instrument loaded on an empty pad is Poly.
 **COLOUR**: the bank's pads, each in its colour; the last pad you hit has
 a ring. **K1** or the encoder changes that pad's colour: **Track** (the
 track's colour), one of 16 colours, or **Kit** (the colour the pad came with
-from an MPC kit). Hit another pad to colour it. The pads light in their
+from an MPC kit; turn back to the end of the list to get it back). Hit
+another pad to colour it. The pads light in their
 colours on every kit page.
 
 ![COLOUR](../images/screens/stagekitcolour.png)
@@ -134,6 +136,10 @@ Press **SAMPLE SELECT** on a kit to open the sample browser. Press it again
 to close it. The header shows the pad a file loads onto (→ A09), the last pad
 you hit.
 
+The browser opens at the top of the card the first time. After that it opens
+where you left it. Kits, keygroups, audio tracks and the rest each keep their
+own folder.
+
 ![The sample browser](../images/screens/samples.png)
 
 | Control | Action |
@@ -147,6 +153,35 @@ you hit.
 | **SHIFT** + **B3** | **STAR**: star the file under the cursor, or take its star off. The key's light shows whether it is starred. |
 | **SHIFT** + pad | Load the file onto the next empty pad. |
 | **ERASE** | Delete the file or folder under the cursor from the card. Melodee asks first: **B3 DELETE**, **B1 CANCEL**. In **STARRED** or **RECENT**: take the file off that list. The file stays on the card. |
+
+### Trim a sample before loading it
+
+**K2** and **K3** set the start and end of the sample under the cursor
+before it goes onto a pad. Turn either knob to open the trim view over the
+list. It shows the whole sample and, below it, a closer view round the point
+you turned last. The file on the card is not changed: the pad gets the start
+and end.
+
+![Trimming in the browser](../images/screens/samples-trim.png)
+
+1. Move to a sample and turn **K2** (**START**) or **K3** (**END**).
+2. Turn the encoder to move that point in finer steps.
+3. Press the encoder to load the sample onto the last pad you hit, with its
+   start and end set. **SHIFT** + pad loads it onto the next empty pad.
+
+With **PREVIEW** on, the part you keep plays once each time you stop moving
+**START**. Each time you stop moving **END**, its last second plays.
+
+| Control | Action |
+| --- | --- |
+| **K2** / **K3** | Start and end. The first turn opens the trim view. |
+| **SHIFT** + **K2** / **K3** | Zoom in on the start or the end, as on Trim. |
+| Encoder | Move the point you turned last, in finer steps. |
+| Encoder push | Load the trimmed sample onto the last pad you hit. |
+| **SHIFT** + pad | Load the trimmed sample onto the next empty pad. |
+| **−** / **+**, **K1** | Move to another file. The trim view closes. |
+| **B1** | Close the trim view without loading. |
+| **ERASE** | Set the start and end back to the whole sample. **ERASE** + **K2** or **K3**: only that one. |
 
 In a folder, MPC kits come first, then instruments, then folders, then
 samples.
@@ -384,7 +419,7 @@ chords or a voice count too. The pads still play the sample, and **KIT**
 lays the drums stem. Press **B2** again to cut from the sample. The four
 stems stay in `Melodee/Samples/Stems`.
 
-A chop holds at most 64 slices: if a type needs more, the last slice runs to
+A chop holds at most 128 slices: if a type needs more, the last slice runs to
 the end, and Melodee says so.
 
 ### Manual chop
@@ -399,7 +434,7 @@ Manual cuts where you tap the pads while the sample plays.
 2. Tap pad 1. The sample plays and pad 2 blinks red.
 3. Tap the red pad on each hit you want to cut at. The red moves on to the
    next pad. After pad 16 the pads switch to bank B and its pad 1 blinks
-   red, up to bank D (64 slices).
+   red, up to bank H (128 slices).
 4. Let the sample play to the end. The take is done and the pads play the
    slices.
 
@@ -508,8 +543,8 @@ Press **SAMPLE RECORD** on a kit to open **Record**.
 
 ![Record](../images/screens/record.png)
 
-1. Use **K1** to choose the source, **K2** the length (Free, Seq, or 1–16
-   bars) and **K3** the threshold.
+1. Use **K1** to choose the source, **K2** the length (Free, Seq, 1–16
+   bars, or 24 to 128 bars) and **K3** the threshold.
 2. Tap a pad, or push the encoder to record onto the first empty pad.
    Recording starts at the threshold, or when the pattern comes round if
    the length is Seq. To start at once, push the encoder again.

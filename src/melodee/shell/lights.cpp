@@ -4,6 +4,7 @@
 // 5 ms; the runtime sends only what changed). Colours come from the track
 // palette; button light values from surface/leds.h.
 #include "melodee/engine/engine_host.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/history_jobs.h"
 #include "melodee/shell/lesson_jobs.h"
 #include "melodee/shell/features.h"
@@ -194,6 +195,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     autosave_tick(now);
     usage_tick(now);
     context_.chop_tick(now); // Chop: a moved cut heard once, gone still
+    context_.browse_tick(now); // Samples' trim sheet: a moved end heard once, the sheet down off its file
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).
     // The library found files or finished a sample: the lengths go into the project.
     if (library_ && library_->generation() != library_seen) {
@@ -346,7 +348,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const bool chop = ui_.page == PageId::Chop && ui_.slices.count;
         const auto& t = project_->tracks[ui_.track % track_count];
         const FrameView view = zoomed_view(); // a close view's frames too, drawn from memory (SampleLibrary::detail())
-        const unsigned view_sample = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
+        const unsigned view_sample = ui_.page == PageId::Chop ? ui_.chop_sample
+                                   : ui_.page == PageId::Samples && ui_.browse.up() ? unsigned(ui_.browse.slot) // the trim sheet's file
+                                   : t.pads[t.last_pad % sampler_pads].sample;
         SlicedChops sliced; // slice hits' samples, their chops as they play them (issue 24)
         for (uint16_t slot : sliced_samples(*project_, context_.patterns)) sliced.emplace_back(slot, &context_.live_chop(slot));
         auto holds = stream_holds(*project_, chop ? &ui_.slices : nullptr, chop ? ui_.chop_sample : no_sample,
@@ -364,6 +368,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     if (encoder_tick(enc, now)) menu_open(context_); // the encoder held: the MENU (shell/menu.h)
     if (history_tick(history_hold, now)) history_open(context_); // Shift + Minus held: the undo list (shell/history_list.h)
+    mixer_view_tick(mixer_view, ui_, now); // the mixer's Plus / Minus held: the card or the strips (shell/mixer_channels.h)
     lesson_tick(context_, now); // a lesson: its kit loaded, or its last step done (shell/lesson_jobs.h)
     if (ui_.levels_sheet && ui_.track != ui_.levels_sheet_track) ui_.levels_sheet = 0; // 16 Levels' FILE or SET (shell/levels_keys.h): another track selected closes it
     // Tap Tempo held half a second with nothing turned: the Tempo page; held on it, back to the page under it.
@@ -494,7 +499,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
-            for (const auto& ref : project_->samples) used += ref.used();
+            for (size_t n = 0, span = project_->samples.span(); n < span; ++n) used += project_->samples[n].used();
             bool taking = chop_take_playing(*project_, ui_, now); // Manual's take still playing (shell/zoom_view.h)
             chop_bits.store((uint32_t(ui_.chop_mode) & 3) | (uint32_t(ui_.chop_mode) >> 2 & 1) << 4 | uint32_t(chop_armed(ui_)) << 2 | uint32_t(taking) << 3 | uint32_t(ui_.slices.count & 0xff) << 8
                             | uint32_t(ui_.chop_slice) << 16 | uint32_t(used) << 24, std::memory_order_relaxed);
@@ -639,7 +644,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             bool shift_job = button_has_shift_job(project, ui, button, kit, keys);
             bool lit = button == B::Shift || (button == B::TapTempo && ui.settings.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
                     || (button == B::NoteRepeat && track.repeat) || (button == B::Mute && ui.mute_mode())
-                    || (track.engine == EngineKind::Sampler && button == B::Loop && track.pads[track.last_pad % sampler_pads].reverse)            // reverse on
+                    || (track.engine == EngineKind::Sampler && button == B::Loop && (ui.page == PageId::Chop && ui.chop_slice < ui.slices.count
+                            ? slice_heard_reversed(track, ui.chop_sample, ui.slices, ui.chop_slice)              // on Chop, the slice in hand's
+                            : track.pads[track.last_pad % sampler_pads].reverse))                                // reverse on
                     || (track.engine == EngineKind::Sampler && button == B::Chop && track.pads[track.last_pad % sampler_pads].play == PadPlay::Gate); // Note On
             set(button, !shift_job ? L::Off : lit ? L::Bright : L::Dim);
         }
@@ -649,7 +656,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool sound_hub = ui.page == PageId::Stage || is_sampler_page(ui.page) || ui.sample_held; // Sample's hub (docs/HUBS_PLAN.md)
     on(B::Sample, sound_hub || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Patterns || ui.page == PageId::Scenes || ui.page == PageId::Roll || ui.page == PageId::Motion || ui.page == PageId::ModPage); // its hub
-    on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
+    on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples || sounds_open(ui)); // Step Edit: the sounds on the pads
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.repeat && ui.page != PageId::Song); // on Song it repeats the clip
     {
@@ -676,7 +683,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     unsigned beat = project.beat_ticks();
     on(B::TapTempo, ui.settings.tap_light && playing && ticks % beat < beat / 3); // Settings > LIGHTS > Tap Tempo light
     on(B::Mute, ui.mute_mode());           // bright while mute mode is on, latched or held
-    on(B::PadBank, tracks_on_pads(ui) || ui.page == PageId::Tracks); // held, a track copy under way, or the mixer's Tracks: the pads pick tracks
+    on(B::PadBank, tracks_on_pads(ui) || ui.page == PageId::Mixer); // held, a track copy under way, or the mixer: the pads pick tracks
     on(B::Erase, ui.erase || ui.copying != UiState::Copying::Off); // lit while copying
     button_levels.store(levels, std::memory_order_relaxed);
 }

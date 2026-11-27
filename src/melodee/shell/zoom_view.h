@@ -98,6 +98,14 @@ inline void zoom_follow(ZoomView& kept, uint32_t key, FrameView was, uint32_t at
     kept = {from, from + w, key};
 }
 
+// A handle's card in frames between lo and hi: zoomed in, the pot turns across the view on screen, which stays put
+// while the handle is inside it.
+inline Binding handle_card(Binding::Kind kind, int id, uint32_t value, uint32_t lo, uint32_t hi, FrameView view) {
+    if (view.width() && value >= view.from && value <= view.to) { lo = std::max(lo, view.from); hi = std::min(hi, view.to); } // another handle's view: all of it
+    if (hi <= lo) { lo = std::min(lo, value); hi = std::max(hi, value + 1); }
+    return {kind, id, int(lo), int(hi), int(std::clamp(value, lo, hi))};
+}
+
 // The wheel's step on a handle: a 1024th of the view, a frame at the closest zoom.
 inline uint32_t fine_step(const FrameView& view) { return std::max<uint32_t>(1, view.width() / 1024); }
 
@@ -181,6 +189,12 @@ inline bool focus_handle(UiState& ui, const Binding& b) {
     case K::ChopStart: chop = 0; break;
     case K::ChopEnd: chop = 1; break;
     case K::ChopZoom: chop = int(b.id % 2); break;
+    case K::BrowseStart: case K::BrowseEnd: case K::BrowseZoom: { // Samples' trim sheet (shell/browse_trim.h)
+        const int browse = b.kind == K::BrowseZoom ? int(b.id % 2) : b.kind == K::BrowseEnd;
+        const bool moved = ui.browse.focus != browse;
+        ui.browse.focus = uint8_t(browse);
+        return moved;
+    }
     default: return false;
     }
     if (trim >= 0) {
@@ -194,7 +208,8 @@ inline bool focus_handle(UiState& ui, const Binding& b) {
 }
 inline bool handle_kind(Binding::Kind k) {
     using K = Binding::Kind;
-    return k == K::PadStart || k == K::PadEnd || k == K::PadLoopPoint || k == K::ChopStart || k == K::ChopEnd;
+    return k == K::PadStart || k == K::PadEnd || k == K::PadLoopPoint || k == K::ChopStart || k == K::ChopEnd || k == K::BrowseStart
+           || k == K::BrowseEnd;
 }
 
 } // namespace melodee

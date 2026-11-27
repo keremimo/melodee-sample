@@ -3,11 +3,13 @@
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/mix_hub.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/pad_job.h"
 #include "melodee/pages/common.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/midi_config_rows.h"
@@ -39,6 +41,14 @@
 namespace melodee {
 
 juce::Colour colour_of(const Snapshot& s) { return ui::track_colour(s.ui.track); }
+juce::Colour channel_shade(unsigned strip, unsigned knob) {
+    switch (channel_kind(strip)) {
+    case ChannelKind::Track: return ui::knob_shade(strip, knob);
+    case ChannelKind::Submix: return ui::sub_shade(channel_sub(strip), knob);
+    case ChannelKind::Bus: return ui::loop_shade(channel_bus(strip), knob);
+    default: return channel_kind(strip) == ChannelKind::Input ? ui::colour::ice : ui::colour::text; // neutral, as the Bus and Master pages
+    }
+}
 juce::Colour load_colour(float load) { return load >= 0.85f ? ui::colour::rec : load >= 0.6f ? ui::colour::amber : ui::colour::play; }
 
 ui::Header header_of(const Snapshot& s) {
@@ -156,6 +166,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         if (!b.bound()) continue;
         if (second[n].bound()) c.shift = s.ui.shift ? 2 : 1;
         if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui, s.track()); // the wheel's card
+        if (s.ui.page == PageId::Samples && s.ui.browse.up()) c.focus = int(n) == 1 + s.ui.browse.focus; // the trim sheet: the wheel's end
         if (s.ui.page == PageId::FaderPage) c.focus = followed.bound() && followed.kind == b.kind && followed.id == b.id;
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
@@ -164,6 +175,14 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         c.knob_fx = b.kind == Binding::Kind::KnobParam; // Knob FX owns the pot: white, never the track's colours
         c.shade = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
         c.track = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
+        if (s.ui.page == PageId::Rack && s.ui.fx_sub >= 0) { // a submix's chain: its colours
+            c.shade = channel_shade(strip_sub(unsigned(s.ui.fx_sub)), n);
+            c.track = channel_shade(strip_sub(unsigned(s.ui.fx_sub)), 0);
+        }
+        if (s.ui.page == PageId::Mixer && s.ui.mixer_bank == 1) { // the mixer's second row: the channel in hand's colours
+            c.shade = channel_shade(mixer_strip(s.ui), n);
+            c.track = channel_shade(mixer_strip(s.ui), 0);
+        }
         c.fill = b.fraction();
         c.frozen = print_covers(s.freeze, freeze_scope(s.project, s.ui, b)); // freeze plan F2c
         const auto& pot = s.ui.pots[n];
@@ -230,6 +249,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::PadSend: c.label = juce::String("SEND ") + char('A' + unsigned(b.id) % bus_count); c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadOut: c.label = "OUTPUT"; c.value = b.value ? "SUB " + juce::String(b.value) : juce::String("KIT"); break;
     case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
     case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;
     case Kind::Layout: c.label = "LAYOUT"; c.value = layout_name(PadLayout(b.value)); break;
@@ -345,6 +365,29 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = m.info->label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(*m.info); c.fill = gauge_of(*m.info, b.value);
         break;
     }
+    case Kind::StepSound: { // Step Edit's SOUND row: the step's own sample by the pad and track it is on ("B05" T1), else PAD
+        c.label = "SOUND";
+        const auto choices = step_sound_choices(s.project);
+        if (b.value > 0 && size_t(b.value) <= choices.size()) { // the panel names the sample
+            const auto& choice = choices[size_t(b.value - 1)];
+            char label[4];
+            pad_label(choice.pad, label);
+            c.value = label;
+            c.unit = "T" + juce::String(choice.track + 1);
+        } else if (b.id > 0 && unsigned(b.id) <= sample_slots) { // a sample no pad holds now: the step keeps it
+            c.value = juce::String::fromUTF8(s.project.samples[unsigned(b.id) - 1].name);
+        } else {
+            c.value = "PAD";
+        }
+        break;
+    }
+    case Kind::StepSlice: // 0 the pad's region, a slice of the chop (id: how many), id + 1 a slice at random each hit
+        c.label = "SLICE";
+        if (b.id <= 0 || b.value <= 0) c.value = "PAD";
+        else if (b.value > b.id) c.value = "RND";
+        else { c.value = juce::String(b.value); c.unit = "/ " + juce::String(b.id); }
+        break;
+    case Kind::StepPlay: c.label = "PLAY"; c.value = step_play_name(StepPlay(std::clamp(b.value, 0, 3))); break;
     case Kind::StepCondition: case Kind::EventCondition: // trig conditions (roadmap P1)
         c.label = "COND"; c.value = trig_name(unsigned(b.value));
         break;
@@ -404,6 +447,62 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         char label[4];
         pad_label(unsigned(b.id), label);
         c.label = juce::String(label) + " MUTE"; c.value = b.value ? "On" : "Off";
+        break;
+    }
+    case Kind::Strip: { // the mixer (docs/MIXER_PLAN.md): one value of a strip, as the mock names it
+        static const char* const bands[] {"63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "16 kHz"};
+        static const char* const speeds[] {"FAST", "MED", "SLOW", "AUTO"};
+        const auto part = StripPart(b.id & 0xff);
+        const juce::String minus = juce::String::fromUTF8("\xe2\x88\x92");
+        auto tenths = [&](int v) { return (v > 0 ? juce::String("+") : v < 0 ? minus : juce::String()) + juce::String(std::abs(v) / 10.0, 1); }; // -5.0, +4.0
+        const unsigned p = unsigned(part);
+        if (p >= unsigned(StripPart::Eq0) && p <= unsigned(StripPart::Eq8)) {
+            c.label = bands[p - unsigned(StripPart::Eq0)]; c.value = tenths(b.value); c.unit = "dB"; c.bipolar = true;
+            break;
+        }
+        switch (part) {
+        case StripPart::Trim: c.label = "TRIM"; c.value = tenths(b.value); c.unit = "dB"; c.bipolar = true; break;
+        case StripPart::Width: c.label = "WIDTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case StripPart::Amount: c.label = "AMOUNT"; c.value = b.value ? minus + juce::String(b.value) : juce::String("OFF"); c.unit = b.value ? "dB" : ""; break;
+        case StripPart::Ratio: c.label = "RATIO"; c.value = (b.value % 10 ? juce::String(b.value / 10.0, 1) : juce::String(b.value / 10)) + ":1"; break;
+        case StripPart::Speed: c.label = "SPEED"; c.value = speeds[unsigned(b.value) % 4]; break;
+        case StripPart::Key: { // what the compressor hears: its own channel, a track, a bus, a submix
+            c.label = "KEY";
+            const unsigned k = unsigned(b.value);
+            if (!k) c.value = "OWN";
+            else if (fx_key_is_track(k)) c.value = "TRACK " + juce::String(k);
+            else if (fx_key_is_bus(k)) c.value = juce::String("BUS ") + char('A' + (k - 17));
+            else c.value = "SUB " + juce::String(k - fx_keys + 1);
+            break;
+        }
+        case StripPart::Mix: c.label = "MIX"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case StripPart::Gain: c.label = "GAIN"; c.value = tenths(b.value); c.unit = "dB"; break;
+        default: c.label = "STRIP"; c.value = juce::String(b.value); break;
+        }
+        break;
+    }
+    case Kind::SubMix: { // a submix's level, pan or send (engine/command.h SubPart)
+        const unsigned part = unsigned(b.id) & 0xff;
+        if (part == Command::SubPan) {
+            c.label = "PAN"; c.bipolar = true;
+            c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
+        } else if (part >= Command::SubSend0) {
+            c.label = juce::String("SEND ") + char('A' + (part - Command::SubSend0) % bus_count);
+            c.value = juce::String(b.value); c.unit = "%";
+        } else { c.label = "LEVEL"; c.value = juce::String(b.value); }
+        break;
+    }
+    case Kind::InputMonitor: { // the mixer's input, K2: Input Config's monitor
+        static const char* const words[] {"OFF", "AUTO", "ON"};
+        c.label = "MONITOR"; c.value = words[unsigned(b.value) % 3];
+        break;
+    }
+    case Kind::InputWet: c.label = "RECORD"; c.value = b.value ? "WET" : "DRY"; break; // takes after the input's strip, or before
+    case Kind::TrackOut: { // where the track plays: the master or a submix, by its name when it has one
+        c.label = "OUTPUT";
+        if (!b.value) { c.value = "MASTER"; break; }
+        const auto& sub = s.project.subs[unsigned(b.value - 1) % sub_count];
+        c.value = sub.name[0] ? name_case(sub.name) : "SUB " + juce::String(b.value);
         break;
     }
     case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
@@ -608,6 +707,20 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::FileJump:
         c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
         break;
+    case Kind::BrowseStart: case Kind::BrowseEnd: { // Samples' trim sheet (shell/browse_trim.h): frames, as seconds
+        c.label = b.kind == Kind::BrowseEnd ? "END" : "START";
+        uint32_t frames = uint32_t(std::max(b.value, 0));
+        if (b.id) { // not read yet: the file's length where this project has it already
+            frames = 0;
+            const auto* file = s.ui.files_cursor < s.files.size() ? &s.files[s.ui.files_cursor] : nullptr;
+            if (b.kind == Kind::BrowseEnd && file)
+                for (const auto& ref : s.project.samples) if (ref.used() && ref.frames && file->path == ref.path) { frames = ref.frames; break; }
+            if (b.kind == Kind::BrowseEnd && !frames) { c.value = juce::String::fromUTF8("\xe2\x80\x94"); break; } // an em dash: not known yet
+        }
+        c.value = juce::String(frames / 44100.0, !b.id && b.max - b.min < 4410 ? 4 : 3); c.unit = "s"; // zoomed under 0.1 s: a tenth of a ms
+        break;
+    }
+    case Kind::BrowseZoom: c.label = b.id ? "ZOOM END" : "ZOOM START"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::PluginJump:
         c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(int(s.plugins.files.size()));
         break;
@@ -928,8 +1041,16 @@ unsigned key_pages(const Snapshot& s, unsigned key, std::array<juce::String, 6>&
             if (here.group == key && here.sub == sub) at = n;
             names[n++] = g.groups[key].pages[sub].key;
         }
-    } else if (mix_section(s.ui.page) != MixSection::None) { // SENDS: the tracks, a kit's pads; FX: along the signal
-        if (key == 1 && kit) { names[0] = "TRACKS"; names[1] = "PADS"; n = 2; at = mix_sends_pads(s.ui, kit) ? 1 : 0; }
+    } else if (s.ui.page == PageId::Mixer) { // B1: SENDS and FX on a track or submix; B2: the EQ's three groups (pages/mixer_page.cpp)
+        if (key == 0 && full_features(s.ui) && channel_sends(channel_kind(mixer_strip(s.ui)))) {
+            names[0] = "SENDS"; names[1] = "FX"; n = 2;
+            at = s.ui.mixer_b1 ? 1 : 0;
+        }
+        if (key == 1 && full_features(s.ui)) {
+            names[0] = "LOW"; names[1] = "MID"; names[2] = "HIGH"; n = 3;
+            at = s.ui.mixer_eq_group % 3;
+        }
+    } else if (mix_section(s.ui.page) != MixSection::None) { // FX: along the signal
         if (key == 2) {
             std::array<PageId, 4> fx {};
             unsigned count = mix_fx_pages(kit, fx);
@@ -950,19 +1071,21 @@ ui::SoftKeys mix_keys(const Snapshot& s) {
     auto here = mix_section(s.ui.page);
     std::array<PageId, 4> fx {};
     unsigned count = mix_fx_pages(kit, fx);
-    ui::SoftKeys keys {{"TRACKS", "SENDS", "FX"}, here == MixSection::None ? -1 : int(here), colour_of(s)};
+    ui::SoftKeys keys {{"MIXER", "", "FX"}, here == MixSection::None ? -1 : int(here), colour_of(s)}; // decision 8
     keys.dots[2] = uint8_t(count);
     keys.dot_at[2] = uint8_t(here == MixSection::Fx ? mix_fx_at(s.ui.page, kit) : 0);
-    if (kit) { keys.dots[1] = 2; keys.dot_at[1] = uint8_t(mix_sends_pads(s.ui, kit)); } // SENDS: the tracks, then the kit's pads
-    if (!sends_shown(s.ui) && here != MixSection::Sends) { keys.labels[1] = ""; keys.dots[1] = 0; } // Basic: Tracks has send A
     return keys;
 }
 void mix_soft(Context& c, int key) {
     bool kit = c.track().engine == EngineKind::Sampler;
-    if (key == 1 && !sends_shown(c.ui) && c.ui.page != PageId::Sends) return; // Basic: no SENDS key
-    if (key == 1) mix_sends_key(c.ui, kit); // B2 again on a kit's Sends: its pads (or back to the tracks)
+    if (key == 1) return; // B2: none (the mixer's SENDS block is the sends)
     PageId next = mix_next(c.ui.page, unsigned(key), kit);
-    if (next == PageId::Rack) c.ui.fx_loop = -1; // the track's own chain, not a loop's
+    if (next == PageId::Rack) { c.ui.fx_loop = -1; c.ui.fx_sub = -1; } // the track's own chain, not a loop's or a submix's
+    if (next == PageId::Mixer) { // B1 MIXER: the mixer on the channel whose chain this is
+        if (c.ui.page == PageId::Bus) pick_other(c.ui, bus_chain(c.ui.sends_bus % bus_count));
+        else if (c.ui.page == PageId::Master) pick_other(c.ui, master_chain);
+        else if (c.ui.page == PageId::Rack || c.ui.page == PageId::PadFx) c.ui.mixer_bank = 0;
+    }
     if (next != c.ui.page) c.open(next);
 }
 

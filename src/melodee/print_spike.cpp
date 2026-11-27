@@ -115,7 +115,7 @@ void plugin_project(Project& p, PatternBank& b, const std::string& path, bool ef
     const int keys[] {48, 52, 55, 60, 64, 60, 55, 52};
     for (unsigned s = 0; s < 16; ++s) {
         Event e;
-        e.tick = s * sixteenth_ticks; e.length = uint16_t(sixteenth_ticks - 4); e.key = uint8_t(keys[s % 8] + (s / 8) * 2); e.velocity = uint8_t(80 + s * 2);
+        e.tick = s * sixteenth_ticks; e.length = note_ticks(sixteenth_ticks * 5 / 6); e.key = uint8_t(keys[s % 8] + (s / 8) * 2); e.velocity = uint8_t(80 + s * 2);
         q.add(e);
     }
     p.tempo = 1240;

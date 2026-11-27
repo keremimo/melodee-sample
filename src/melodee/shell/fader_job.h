@@ -46,6 +46,12 @@ Binding fader_target_binding(const Track& track, FaderTarget target);
 // rest. And the card it is now: unbound where it no longer is one (another
 // engine, the effect gone), or a pad's value with no sample on the last pad.
 FaderLearned fader_learnable(const Track& track, unsigned t, const Binding& b);
+// A target chosen by hand with the Fader page's encoder holds (issue 57: FILTER, ECHO and SPACE took a chosen target
+// away): it pins, as B2 PIN does, until B2 lets the knobs take it again.
+void assign_fader_target(Track& track, FaderTarget target);
+// What a turned pot moves the fader to (fader C): none while PIN holds it, except on the Fader page, whose K1-K3
+// (the track's favourites) are there to choose from.
+FaderLearned fader_follow(const Track& track, unsigned t, const Binding& b, bool on_fader_page);
 Binding fader_learned_binding(const Track& track, unsigned t);
 bool fader_learned_pad(const FaderLearned& learned); // a kit pad's own value (it follows the last pad hit)
 // How bright the fader light is for the job, 0..1: the value's place, or its

@@ -6,6 +6,7 @@
 #include "melodee/shell/tap_hold.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/history_list.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/update.h"
 #include "melodee/shell/context.h"
@@ -20,6 +21,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/snapshot.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/ui_state.h"
 #include "runtime/app.h"
 #include "surface/leds.h"
@@ -42,6 +44,7 @@ class Shell {
 public:
     // Starts with starting_project(); the engine host is loaded from it before audio runs.
     explicit Shell(EngineHost& host);
+    void load_engine(); // load the starting state before audio runs
 
     // MIDI thread.
     void surface(const SurfaceEvent& event, uint32_t now_ms);
@@ -59,6 +62,7 @@ public:
     bool usb_full_volume() const { return usb_full.load(std::memory_order_relaxed); }
     // Any thread: Settings' USB-C in (Direct) and its direct level as a gain.
     bool usb_direct_on() const { return usb_direct.load(std::memory_order_relaxed); }
+    bool usb_submixes_on() const { return usb_submixes.load(std::memory_order_relaxed); } // Settings' USB out
     float usb_direct_gain() const { return direct_gain.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
     // Any thread: Settings' sample rate and buffer (periods): the card's from start_settings(), else the default.
@@ -70,6 +74,8 @@ public:
         unsigned n = (wanted >> 1 & 7) % ScreenMirror::size_count;
         return {(wanted & 1) != 0, ScreenMirror::widths[n], ScreenMirror::heights[n], (wanted & 16) ? 60u : 30u};
     }
+    // Any thread: Settings' File sharing, published with the audio format.
+    bool file_sharing() const { return file_sharing_wanted.load(std::memory_order_relaxed); }
     // Before the threads start: the card's settings (Settings::read() text), so that the runtime opens the audio
     // device at their rate and buffer at once. The service thread reads the same file again later.
     void start_settings(const std::string& text);
@@ -86,9 +92,14 @@ public:
     // Screen thread: a copy of what the page needs, taken under a short lock.
     void snapshot(Snapshot& out, uint32_t now_ms);
 
-    // Host previews: the state to draw from, without the hardware.
-    Project& project() { return *project_; }
-    PatternBank& patterns() { return *patterns_; }
+    // Preview writers must serialize their edits with snapshots. They can keep either reference between frames.
+    // From then on this shell takes whole snapshots. The live app loads its engine without borrowing either.
+    Project& project() { preview_editable_.store(true, std::memory_order_relaxed); return *project_; }
+    PatternBank& patterns() { preview_editable_.store(true, std::memory_order_relaxed); return *patterns_; }
+    // The screen's snapshot: snapshot_light off forces every snapshot whole. snapshot_verify (monkey, tests)
+    // checks every light snapshot against a whole one, counting any drift in snapshot_stale() and repairing it.
+    static inline bool snapshot_light = true, snapshot_verify = false;
+    unsigned snapshot_stale() const { return stale_.load(std::memory_order_relaxed); }
     UiState& ui() { return ui_; }
     Context& context() { return context_; }
     // The app's sample library (service thread); the shell follows its changes.
@@ -97,7 +108,11 @@ public:
     void set_input(InputRoute* input) { input_ = input; context_.input = input; }
     void set_plugins(PluginRack* plugins) { context_.plugins = plugins; } // the app's plug-in rack (plugin/plugin_rack.h)
     void set_printer(PrintEngine* printer) { context_.printer = printer; } // the app's print engine (shell/print_engine.h)
-    void print(const Context::PrintAsk& ask) { context_.print(ask); }     // MIDI thread: `melodee-print`
+    void print(const Context::PrintAsk& ask) { // MIDI thread: `melodee-print`
+        std::lock_guard<std::mutex> guard(lock);
+        ++context_.heavy_serial;
+        context_.print(ask);
+    }
     // SD card access (parity phase 10b): the MIDI thread asks, the service thread lends.
     CardLink& card() { return card_link; }
     // Updates from the card (shell/update.h): written by the service thread, read by the MIDI thread.
@@ -148,17 +163,22 @@ private:
     UiState ui_;
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
+    std::atomic<bool> preview_editable_ {false};
+    std::atomic<unsigned> stale_ {0};  // snapshot_stale()
     // Presses the Loading sheet took (ui.loading): their releases are taken too, even after it has gone.
     std::array<bool, 256> eaten_buttons {};
     std::array<bool, 128> eaten_pads {};
     CompTrail comp_trail; // the screen thread's, in snapshot(): the Compressor page's picture over time
+    CompTrail strip_trail; // and the mixer's COMP block's: the selected track's strip
+    SpectrumView spectrum_view; // the mixer's EQ picture (draw thread), of the strip the engine taps
+    int spectrum_tapped = -1;
     CompBar comp_bar;     // and over one bar of the song (round 2, compressor B)
     HeadTrail trail; // the screen thread's, in snapshot(): heads kept while their wakes fade
     std::atomic<float> main_volume {0.7f};
     std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
     std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
     std::atomic<uint32_t> mirror_wanted {3u << 1}; // on | size << 1 | 60 fps << 4: off, 1280 x 960, 30 fps
-    std::atomic<bool> usb_full {true}, usb_direct {true};
+    std::atomic<bool> usb_full {true}, usb_direct {true}, usb_submixes {false}, file_sharing_wanted {true};
     std::atomic<float> direct_gain {1.0f};
     void want_audio_format() {
         audio_wanted.store(ui_.settings.audio_rate | uint32_t(ui_.settings.audio_periods) << 20, std::memory_order_relaxed);
@@ -166,6 +186,8 @@ private:
                             std::memory_order_relaxed);
         usb_full.store(ui_.settings.usb_full, std::memory_order_relaxed);
         usb_direct.store(ui_.settings.usb_direct, std::memory_order_relaxed);
+        usb_submixes.store(ui_.settings.usb_submixes, std::memory_order_relaxed);
+        file_sharing_wanted.store(ui_.settings.file_sharing, std::memory_order_relaxed);
         direct_gain.store(ui_.settings.direct_gain(), std::memory_order_relaxed);
     }
     std::atomic<unsigned> power {0};
@@ -181,6 +203,7 @@ private:
     EncoderHold enc; // the encoder's push: a tap is the page's, a hold opens the MENU (shell/menu.h)
     TapHold tap; // Tap Tempo held: the tempo on the encoder, or the Tempo page (shell/tap_hold.h)
     HistoryHold history_hold; // Shift + Minus: a tap undoes, a hold opens the undo list (shell/history_list.h)
+    MixerViewHold mixer_view; // the mixer's Minus / Plus: a tap nudges, a hold shows the card or the strips (shell/mixer_channels.h)
     // Background save (shell/autosave.h): when a control or a note last came in, and the last save that found no card.
     uint32_t last_input_ = 0, autosave_try_ = 0;
     bool autosave_failed_ = false;

@@ -94,7 +94,7 @@ def collect(binary, version, commit, stems=ROOT / "build/stems"):
         if not (stems / name).is_file():
             raise RuntimeError(f"Missing {stems / name}; run ./release.sh")
     files = {f"{PACKAGE}/sample-base": binary.read_bytes()}
-    for name in ("restore-stock.sh", "sd-boot.sh", "sd-worker.sh", "sd-update.sh"):
+    for name in device.SD_FILES[1:]:
         files[f"{PACKAGE}/{name}"] = (BASE / "install" / name).read_bytes()
     files[f"{PACKAGE}/SHA256SUMS"] = sums(files, PACKAGE + "/").encode()
     files[f"{PACKAGE}/app"] = b"melodee\n"

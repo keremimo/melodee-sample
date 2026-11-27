@@ -47,6 +47,11 @@ void SampleLibrary::save_recall(const RecallJob& job) {
 // stopped by hand, or lost because this thread fell 12 s behind.
 void SampleLibrary::drain_render() {
     auto& bounce = host.bounce();
+    if (stems_closing) { // the stems' last chunks still going to the card
+        if (stem_writer && !stem_writer->done()) return;
+        close_stems();
+        return;
+    }
     if (!rendering) {
         auto state = bounce.state();
         if (renders.pop(render_job)) {
@@ -54,30 +59,33 @@ void SampleLibrary::drain_render() {
             render_rate = bounce.rate();
             render_data.reset();
             render_path.clear();
-            if (render_job.to_file) {
+            stems_done_.store(0, std::memory_order_release);
+            if (render_job.to_file && render_job.stems) { // roadmap P4: a folder of its own, the mix beside the stems
                 std::string top = card();
                 std::error_code error;
-                std::string folder = top + "/Melodee/Mixdowns";
-                if (render_job.stems && !top.empty()) { // roadmap P4: a folder of its own, the mix beside the stems
+                std::string folder;
+                if (render_job.more) folder = stems_folder; // a later pass: the pad stems the first could not take
+                else if (!top.empty()) {
                     std::string stems = top + "/Melodee/Stems";
                     fs::create_directories(stems, error);
                     folder = free_name(stems, render_job.name, "");
                     fs::create_directories(folder, error);
-                } else if (!top.empty()) fs::create_directories(folder, error);
-                render_path = top.empty() ? std::string() : render_job.stems ? folder + "/Mix.wav" : free_name(folder, render_job.name);
+                }
+                render_path = folder.empty() ? std::string() : render_job.more ? folder : folder + "/Mix.wav";
+                if (render_path.empty() || !stems_ring || !open_stems(folder)) {
+                    render_path.clear();
+                    stems_done_.store(-1, std::memory_order_release);
+                    finish(top.empty() ? "Mixdown: no card" : "Mixdown: cannot write");
+                }
+            } else if (render_job.to_file) {
+                std::string top = card();
+                std::error_code error;
+                std::string folder = top + "/Melodee/Mixdowns";
+                if (!top.empty()) fs::create_directories(folder, error);
+                render_path = top.empty() ? std::string() : free_name(folder, render_job.name);
                 if (render_path.empty() || !render_file.open(render_path, render_rate, render_job.bits)) { // at the device's rate
                     render_path.clear();
                     finish(top.empty() ? "Mixdown: no card" : "Mixdown: cannot write");
-                }
-                stem_open = 0;
-                if (render_job.stems && stems_ring && !render_path.empty()) {
-                    uint32_t mask = stems_ring->mask();
-                    for (unsigned s = 0; s < StemRing::stem_count; ++s) {
-                        if (!((mask >> s) & 1)) continue;
-                        char file[64];
-                        std::snprintf(file, sizeof(file), "%02u %s.wav", s + 1, render_job.stem_names[s].data());
-                        if (stem_files[s].open(folder + "/" + file, render_rate)) stem_open |= 1u << s;
-                    }
                 }
             } else {
                 // Into a slot: with a card, straight into Samples/Recorded/RESAMPLE n.wav as it comes (32-bit float: a mix
@@ -112,9 +120,11 @@ void SampleLibrary::drain_render() {
     render_chunk.resize(2 * 16384);
     // Everything there is now, a chunk at a time; into a slot, as long as a pad's sample may be (60 s).
     const uint32_t most = uint32_t(uint64_t(TakeRecorder::max_frames) * render_rate / uint32_t(dsp::model_rate));
-    if (stem_open) drain_stems(false);
+    if (stems_open) drain_stems();
     for (unsigned n; (n = bounce.pop(render_chunk.data(), 16384)) > 0;) {
-        if (render_job.to_file || render_written) { if (!render_path.empty()) render_file.add(render_chunk.data(), n); }
+        if (stems_open) { if (!render_job.more) stem_writer->add(unsigned(stem_paths.size() - 1), render_chunk.data(), n); } // the mix
+        else if (render_job.stems) {} // stems that could not open: nothing kept
+        else if (render_job.to_file || render_written) { if (!render_path.empty()) render_file.add(render_chunk.data(), n); }
         else if (render_data && render_data->left.size() < most)
             for (unsigned f = 0; f < n && render_data->left.size() < most; ++f) {
                 render_data->left.push_back(render_chunk[2 * f]); render_data->right.push_back(render_chunk[2 * f + 1]);
@@ -132,7 +142,7 @@ void SampleLibrary::drain_render() {
     if (!ended || !bounce.drained()) return;
     rendering = false;
     bounce.release();
-    if (stem_open) drain_stems(true);
+    if (stems_open) drain_stems();
     host.set_stems(nullptr);
     if (render_written) { // a render into a slot, in its file: from there into the slot
         render_written = false;
@@ -150,12 +160,15 @@ void SampleLibrary::drain_render() {
     }
     if (render_job.to_file) {
         if (render_path.empty()) return; // said already
-        bool kept = render_file.close() && state == Bounce::State::Done && render_file.frames() > 0;
-        if (render_job.stems) { // roadmap P4: the folder stays with what it holds; a stem that could not keep up is said
-            if (stems_ring && stems_ring->failed()) { finish("Stems: card too slow"); return; }
-            finish(kept ? "Stems " + fs::path(render_path).parent_path().filename().string() : "Stems stopped");
+        if (render_job.stems) { // roadmap P4: the last chunks to the card, then closed (close_stems())
+            if (!stems_open) return;
+            stems_cancelled = state == Bounce::State::Cancelled;
+            stems_failed = state == Bounce::State::Failed; // the render's own ring fell behind
+            stem_writer->flush();
+            stems_closing = true;
             return;
         }
+        bool kept = render_file.close() && state == Bounce::State::Done && render_file.frames() > 0;
         if (!kept) {
             std::error_code error;
             fs::remove(render_path, error);
@@ -174,16 +187,72 @@ void SampleLibrary::drain_render() {
     land(render_job.slot, std::move(render_data), render_rate, "Recorded", "RESAMPLE", "Resample");
 }
 
-// Roadmap P4: the stems' frames as they come, each into its file (closed with the mix, `last`).
-void SampleLibrary::drain_stems(bool last) {
+// Roadmap P4: the stems' files, by the ring's rows (a stem's "NN <name>.wav", a pad stem's path in the job), then the
+// mix's "Mix.wav" (not on a later pass), written by the StemWriter's thread.
+bool SampleLibrary::open_stems(const std::string& folder) {
+    std::error_code error;
+    stem_paths.clear();
+    for (unsigned row = 0; row < stems_ring->rows(); ++row) {
+        const unsigned s = stems_ring->row_stem(row);
+        if (s < StemRing::stem_count) {
+            char file[64];
+            std::snprintf(file, sizeof(file), "%02u %s.wav", s + 1, render_job.stem_names[s].data());
+            stem_paths.push_back(folder + "/" + file);
+        } else {
+            const std::string path = folder + "/" + render_job.pad_paths[s - StemRing::stem_count].data() + ".wav";
+            fs::create_directories(fs::path(path).parent_path(), error);
+            stem_paths.push_back(path);
+        }
+    }
+    if (!render_job.more) stem_paths.push_back(folder + "/Mix.wav");
+    if (!stem_writer) stem_writer = std::make_unique<StemWriter>();
+    stems_open = stem_writer->open(stem_paths, render_rate);
+    if (!stems_open) return false;
+    stems_folder = folder;
+    stems_delayed = stems_closing = stems_cancelled = stems_failed = false;
+    return true;
+}
+
+// The stems' frames as they come, each row onto its file; a pad stem first gets the silence its track's chain was
+// late by (StemRing::pad_delay), once, so it meets its kit.
+void SampleLibrary::drain_stems() {
     constexpr unsigned chunk = 4096;
-    stem_chunk.resize(size_t(StemRing::stem_count) * 2 * chunk);
-    for (unsigned n; (n = stems_ring->pop(stem_chunk.data(), chunk)) > 0;)
-        for (unsigned s = 0; s < StemRing::stem_count; ++s)
-            if ((stem_open >> s) & 1) stem_files[s].add(stem_chunk.data() + size_t(s) * 2 * chunk, n);
-    if (!last) return;
-    for (unsigned s = 0; s < StemRing::stem_count; ++s) if ((stem_open >> s) & 1) stem_files[s].close();
-    stem_open = 0;
+    const unsigned rows = stems_ring->rows();
+    stem_chunk.resize(size_t(std::max(rows, 1u)) * 2 * chunk);
+    bool ok = true;
+    for (unsigned n; (n = stems_ring->pop_rows(stem_chunk.data(), chunk)) > 0;) {
+        if (!stems_delayed) {
+            stems_delayed = true;
+            for (unsigned row = 0; row < rows; ++row) {
+                const unsigned s = stems_ring->row_stem(row);
+                if (s >= StemRing::stem_count)
+                    stem_writer->add_silence(row, stems_ring->pad_delay(render_job.pad_tracks[s - StemRing::stem_count]));
+            }
+        }
+        for (unsigned row = 0; row < rows; ++row) ok = stem_writer->add(row, stem_chunk.data() + size_t(row) * 2 * chunk, n) && ok;
+    }
+    (void)ok; // a queue that ran over fails the files (close())
+}
+
+void SampleLibrary::close_stems() {
+    stems_closing = false;
+    stems_open = false;
+    std::vector<float> loudest;
+    const bool written = stem_writer->close(&loudest);
+    const bool slow = stems_failed || (stems_ring && stems_ring->failed()) || !written;
+    // A pad stem that never sounded is not kept, nor a pad folder left empty.
+    std::error_code error;
+    for (unsigned row = 0; row < loudest.size() && row < stem_paths.size(); ++row) {
+        if (!stems_ring || row >= stems_ring->rows() || stems_ring->row_stem(row) < StemRing::stem_count || loudest[row] > 0) continue;
+        fs::remove(stem_paths[row], error);
+        const fs::path folder = fs::path(stem_paths[row]).parent_path();
+        if (fs::is_empty(folder, error)) fs::remove(folder, error);
+    }
+    const std::string name = fs::path(stems_folder).filename().string();
+    if (stems_cancelled) { stems_done_.store(-1, std::memory_order_release); finish("Stems stopped"); return; }
+    if (slow) { stems_done_.store(-1, std::memory_order_release); finish("Stems: card too slow"); return; }
+    stems_done_.store(1, std::memory_order_release);
+    if (render_job.pass >= render_job.passes) finish("Stems " + name); // a pass before the last: the next one says
 }
 
 StemRing* SampleLibrary::stem_ring() {
@@ -192,7 +261,7 @@ StemRing* SampleLibrary::stem_ring() {
 }
 
 bool SampleLibrary::busy() const {
-    return rendering || !landings.empty() || pool.pending() || host.recorder().state() != TakeRecorder::State::Idle // an instrument still being laid out writes to it too
+    return rendering || stems_closing || !landings.empty() || pool.pending() || host.recorder().state() != TakeRecorder::State::Idle // an instrument still being laid out writes to it too
            || separator.busy(); // stems are read from the card and written to it
 }
 

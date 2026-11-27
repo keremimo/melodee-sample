@@ -14,9 +14,10 @@
 //   sample rate and the buffer: longer rides out a slow moment without a
 //   crackle, shorter is heard sooner; USB volume: what a computer records
 //   over USB-C at full main volume, or following the knob; USB-C in Direct,
-//   straight to the jacks, or through Tracks; its direct level), SAMPLING (how Audio Recall cuts the
-//   ring and when a Free take ends on its own), MIDI (MIDI Config's page),
-//   SYSTEM. The wheel picks a door, Push or B3 opens it, B1 goes back.
+//   straight to the jacks, or through Tracks; its direct level; File sharing: the card as a network drive for the
+//   computer on USB-C), SAMPLING (how Audio Recall cuts the
+//   ring and when a Free take ends on its own), MIDI (MIDI Config's page)
+//   and SYSTEM. The wheel picks a door, Push or B3 opens it, B1 goes back.
 //   Behind a door its rows, scrolling past six (a bar and arrows at the right edge): the wheel moves the cursor,
 //   K1 sets the row under it (its card), Minus / Plus step it; Sample rate, Audio buffer and Screen Mirror's
 //   rows wait for K1 to rest before they reopen the device; B1 back to the doors. The header of
@@ -58,7 +59,8 @@ const std::array<Door, 8> doors {{
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
     {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::PlaceBarRow, Settings::PluginSkins, Settings::Mirror,
                                   Settings::MirrorSize, Settings::MirrorRate)},
-    {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbDirect, Settings::DirectLevel)},
+    {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbOut, Settings::UsbDirect, Settings::DirectLevel,
+                                  Settings::FileSharingRow)},
     {Icon::Mic, "SAMPLING", ROWS(Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
                                  Settings::SilenceBelow)},
     {Icon::Din, "MIDI", {none}},  // MIDI Config's own page

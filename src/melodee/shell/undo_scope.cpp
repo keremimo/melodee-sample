@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/undo_scope.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/stage_map.h"
 
@@ -21,9 +22,16 @@ MixState mix_of(const Project& p) {
     MixState m {};
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& x = p.tracks[t].mix;
-        m.level[t] = x.level; m.pan[t] = x.pan; m.sends[t] = x.sends;
+        m.level[t] = x.level; m.pan[t] = x.pan; m.sends[t] = x.sends; m.outs[t] = x.out;
     }
     for (unsigned b = 0; b < bus_count; ++b) m.returns[b] = p.buses[b].level;
+    for (unsigned n = 0; n < strip_channels; ++n) m.strips[n] = p.strip(n);
+    for (unsigned sub = 0; sub < sub_count; ++sub) {
+        const auto& x = p.subs[sub].mix;
+        m.sub_level[sub] = x.level; m.sub_pan[sub] = x.pan;
+        for (unsigned b = 0; b < bus_count; ++b) m.sub_sends[sub][b] = x.sends[b];
+    }
+    m.input_wet = p.input_wet;
     return m;
 }
 SoundState sound_of(const Track& t) {
@@ -53,7 +61,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     using S = UndoScope::Kind;
     switch (b.kind) {
     case Kind::Param: case Kind::ModSource: case Kind::ModDest: case Kind::ModAmount: return of(S::Sound, ui);
-    case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: return of(S::Mix, ui);
+    case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: case Kind::Strip: case Kind::TrackOut: case Kind::SubMix: case Kind::InputWet: return of(S::Mix, ui);
     case Kind::FxParam: case Kind::FxKey: return of(S::Chain, ui, unsigned(b.id) / 64);
     // Roadmap P4: a modulator's settings and a macro's targets, with the master's; a macro's turn and the picks are not kept.
     case Kind::ModKind: case Kind::ModShape: case Kind::ModSync: case Kind::ModRate: case Kind::ModInput: case Kind::ModAttack:
@@ -65,7 +73,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadFilterType: case Kind::PadCutoff: case Kind::PadResonance: case Kind::PadFAttack: case Kind::PadFDecay:
     case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: case Kind::PadWarp: case Kind::PadBeats:
     case Kind::LayerLow: case Kind::LayerHigh: case Kind::LayerPitch: case Kind::LayerGain: case Kind::LayerPlayMode: case Kind::PadLoopXfade:
-    case Kind::PadColour: case Kind::PadSend: case Kind::PadCloud:
+    case Kind::PadColour: case Kind::PadSend: case Kind::PadCloud: case Kind::PadOut:
     case Kind::ZoneTune: case Kind::ZoneLevel: // round 3 "instrument C": the pad's state holds its trims
         return pad_scope(ui, project);
     case Kind::ChopMode: case Kind::ChopAmount: case Kind::ChopStart: case Kind::ChopEnd: return of(S::Chop, ui);
@@ -78,6 +86,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::StepLength: case Kind::StepVelocity: case Kind::StepChance: case Kind::EventVelocity: case Kind::EventLength:
     case Kind::EventChance: case Kind::StepRatchet: case Kind::StepRamp: case Kind::StepPitchRamp: case Kind::EventRatchet:
     case Kind::EventRamp: case Kind::EventPitchRamp: case Kind::StepCondition: case Kind::EventCondition: case Kind::Lock:
+    case Kind::StepSound: case Kind::StepSlice: case Kind::StepPlay:
     case Kind::LaneLength: case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity:
     case Kind::GrooveFrom: case Kind::GrooveAmount: case Kind::EuclidHits: case Kind::EuclidSteps: case Kind::EuclidRotate: case Kind::EventNudge: case Kind::MarksRamp:
     case Kind::MarksVelocity:
@@ -124,11 +133,16 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
     if (ui.seq_held) return {}; // the Sequence layer: launches and pages; a copy keeps its own edit (shell/seq_layer.cpp)
     if (!pad && ui.page == PageId::Song && !ui.shift && !ui.song_export && (button == B::Loop || button == B::NoteRepeat)) return of(S::Song, ui); // the brace, the clip's repeats
     if (!pad && (button == B::Loop || (button == B::Chop && ui.shift))) return pad_scope(ui, project);
+    if (!pad && button == B::Mute && !ui.shift && !ui.mute_latch && mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0)
+        return of(S::Chain, ui, unsigned(channel_chain(mixer_strip(ui)))); // the mixer's FX block: a tap switches the lit effect
     if (!pad && (button == B::KnobFx || button == B::Mute || button == B::NoteRepeat || button == B::PadBank || button == B::Play
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits
     switch (ui.page) {
     case PageId::Song: return of(S::Song, ui);
-    case PageId::Tracks: case PageId::Sends: return of(S::Mix, ui);
+    case PageId::Mixer: // its FX block edits the channel's chain; the master's COMP the printed Compressor
+        if (mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0) return of(S::Chain, ui, unsigned(channel_chain(mixer_strip(ui))));
+        if (mixer_master_comp(ui)) return of(S::Master, ui);
+        return of(S::Mix, ui);
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return of(S::Chain, ui, page_chain(project, ui));
     case PageId::KnobFx: case PageId::Compressor: case PageId::FlexBeat: case PageId::Punch: return of(S::Master, ui);
     case PageId::Chop: // a pad picks and plays a slice (no step; a take is one, Context::open_take, Erase + pad in it too);
@@ -155,6 +169,7 @@ std::string scope_name(const Project& project, const UiState& ui, const UndoScop
     case S::Chain:
         if (s.index >= pad_chain_base) { char label[4]; pad_label((s.index - pad_chain_base) % sampler_pads, label); return std::string(label) + " FX"; }
         if (s.index == master_chain) return "Master FX";
+        if (is_sub_chain(s.index)) return "S" + std::to_string(s.index - sub_chain(0) + 1) + " FX";
         if (is_loop_chain(s.index)) return "L" + std::to_string(s.index - loop_chain(0) + 1) + " FX";
         if (s.index >= track_count) return std::string("Bus ") + char('A' + (s.index - track_count) % bus_count) + " FX";
         return "T" + std::to_string(s.index + 1) + " FX";

@@ -15,7 +15,7 @@ cursor's bar and time, and the loop.
 | Encoder | Move the cursor by a bar. |
 | Pads | Select a lane. An empty track opens its [new track cards](tracks.md#make-a-new-track), then comes back to Song. |
 | **K1** | Zoom (4–64 bars). |
-| **K2** / **K3** | The next clip's pattern and length (1–16 bars), or those of the clip under the cursor. |
+| **K2** / **K3** | The next clip's pattern and length (1–128 bars), or those of the clip under the cursor. |
 | **B3** | Place a clip of the pattern and length on **K2** and **K3**. On a clip: duplicate it after itself. |
 | **B2** | Mute or unmute the clip. |
 | **SHIFT** + **B2** (**MOTION**) | Open the clip's pattern on the Motion page. |
@@ -54,7 +54,7 @@ becomes a clip.
 2. Press **SEQ RECORD**.
 3. Launch patterns or sequences: on Patterns, on Sequences, or with **SEQ**
    held. Each launch starts a clip on that track's lane at the next bar.
-   The clip grows a bar at a time while the pattern plays. After 16 bars a
+   The clip grows a bar at a time while the pattern plays. After 128 bars a
    new clip carries on.
 4. Press **SEQ RECORD** again, or **STOP**. Each clip ends with the bar that
    was playing.
@@ -113,7 +113,8 @@ Press **B1** (**EXPORT**):
 
 - **B2** exports. Turn the encoder first to choose what: a **MIXDOWN**
   (32-bit float, 24-bit or 16-bit WAV), **STEMS** (one WAV per track and
-  bus, plus the mix), a **MIDI FILE**, an **MPC 3** project or an Ableton
+  bus, one per submix the tracks play into, each kit pad the song plays, and
+  the mix), a **MIDI FILE**, an **MPC 3** project or an Ableton
   **LIVE SET**. The key shows the choice. Then name the export (see
   [Naming](projects-and-files.md#naming)). A **MIDI FILE**, an **MPC 3**
   project and a **LIVE SET** also work with an empty song: they take the
@@ -126,6 +127,24 @@ Press **B1** (**EXPORT**):
 Exports go to `Melodee/Mixdowns`, `Melodee/Stems/<name>/` and
 `Melodee/MIDI` on the card. A `.mid` file in the browser loads its notes
 onto the selected track's pattern.
+
+### Stems of kit pads
+
+**STEMS** also writes each kit pad the song plays as a WAV of its own, in a
+folder for each kit beside the kit's own WAV: `03 Drums pads/A01 Kick.wav`
+is pad A01 of track 3, named after its sample.
+
+- A pad's WAV is the pad after its own effects, volume and pan, at the kit
+  track's level, pan and mute, as its pad sends are taken. The kit track's
+  effects, filter and mixer strip are not on it: with none on the kit, its
+  pads add up to the kit's WAV.
+- The kit's own WAV holds all its pads, as before. Use one or the other, not
+  both.
+- A pad that stays silent in the song gets no WAV. A frozen kit's pads are
+  not split.
+- When there are more stems than one play of the song can write to the card,
+  **STEMS** plays the song again for the rest of the pads. The message says
+  which pass runs (*Stems: pass 2 of 3*). Each play has the same hits.
 
 ### MPC 3 project
 
@@ -147,8 +166,12 @@ folder with the samples. MPC One, Live, Key, X and the MPC 3 software open it.
   **Song**, in the first free number, and MPC 3 opens on it.
 - A MIDI track becomes an MPC MIDI track on its channel, with its bank and
   program. Pick its output port on the MPC.
-- Effects, sends, the song's tempo changes and samples that are
-  not WAV files are left out. The message after the export says what was.
+- A track sent to a submix plays into the same submix in MPC 3. Each
+  submix a track plays into keeps its level, pan, mute and solo.
+- Effects, sends, the mixer's strips (trim, EQ, compressor, width), a
+  submix's name, muted buses, the song's tempo changes and samples that are
+  not WAV files are left out. The message after the export says what was
+  (*mixer settings left out* for the mixer).
 
 ### Ableton Live Set
 
@@ -177,7 +200,10 @@ to a computer and open the `.als` in Ableton Live 12.1 or later.
 - An audio track's takes become audio clips.
 - Each track keeps its level, pan, mute, solo and sends. Buses that tracks
   send to become return tracks.
-- Effects, Motion, pad filters and pad sends are left out.
+- Effects, Motion, pad filters, pad sends, the mixer's strips, the
+  submixes and muted buses are left out: a track sent to a submix plays to
+  the master. The message after the export says *mixer settings left out*
+  when the mixer had any of them.
 
 ---
 
