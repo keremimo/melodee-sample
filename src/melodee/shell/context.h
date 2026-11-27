@@ -113,6 +113,8 @@ public:
     void load_sound(unsigned track, EngineKind kind, unsigned sound);
     void audition(int sound);                                 // -1: back to the loaded sound
     void apply(const Binding& binding, int value);            // a pot's new value
+    bool show_drawn(Binding& binding);                        // drawing on Motion, a point under the cursor: its value in
+                                                              // `binding`, and true (a turn sets that point, apply())
     void set_route(unsigned route, const ModRoute& value);   // the selected track's mod matrix
     void pressure(unsigned pad, uint8_t value);             // poly aftertouch from a held pad
     // Punch: a pad of the Punch page (hold to punch), Push with it held to

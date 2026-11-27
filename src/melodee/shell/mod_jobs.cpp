@@ -9,29 +9,10 @@ namespace melodee {
 namespace {
 using Kind = Binding::Kind;
 using Type = Command::Type;
-
-// The lane a card turns, on track `t` (the track in hand): -1 for a card that names none.
-int lane_of(const Project& project, unsigned t, const Binding& b) {
-    const auto& track = project.tracks[t % track_count];
-    if (int lane = binding_lane(track, b); lane >= 0) return lane;
-    switch (b.kind) {
-    case Kind::Level: return int(motion_level);
-    case Kind::Pan: return int(motion_pan);
-    case Kind::Send: return int(motion_send(unsigned(b.id)));
-    case Kind::BusReturn: return int(motion_return(unsigned(b.id)));
-    case Kind::FxParam: {
-        unsigned chain = unsigned(b.id) / 64, slot = (unsigned(b.id) / 8) % 8, q = unsigned(b.id) % 8;
-        if (chain == t) return int(motion_fx_param(slot, q));
-        if (chain == master_chain) return int(motion_master_fx(slot, q));
-        return -1;
-    }
-    default: return -1;
-    }
-}
 } // namespace
 
 void learn_lane(Context& c, const Binding& b) {
-    int lane = lane_of(c.project, c.ui.track, b);
+    int lane = turned_lane(c.project, c.ui.track, b);
     if (lane < 0) return;
     c.ui.learn_lane = int16_t(lane);
     c.ui.learn_track = uint8_t(c.ui.track % track_count);

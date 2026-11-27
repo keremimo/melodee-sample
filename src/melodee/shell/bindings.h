@@ -176,7 +176,9 @@ constexpr unsigned lane_param(int lane) { return unsigned(lane) & 0xff; }
 constexpr unsigned lane_pad(int lane) { return unsigned(lane) >> 8; }
 // The three lanes the Motion page shows: those holding motion on the
 // track's playing pattern first (a kit's pad lanes of the last pad hit),
-// then on a kit the last pad's tune, level and pan, else the favourites.
+// then on a kit the last pad's tune, level and pan, else the favourites; a
+// lane Push began on Motion (UiState::motion_pin) first, while draw mode is on
+// and it has points, when it is none of those.
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const Pattern& pattern);
 // What a lane is: its description and the track's own value; info is
 // nullptr when there is no such parameter (or a pad value phase 4 brings).
@@ -243,6 +245,10 @@ std::array<Binding, 3> favourite_bindings(const Track& track);
 // (an engine parameter, a kit pad's own value on the last pad, the mod
 // wheel), -1 where it lands in none.
 int binding_lane(const Track& track, const Binding& b);
+// The Motion lane a card turns on track `t`: binding_lane()'s, or the strip's level, pan and sends, a return, the
+// master's chain, a kit pad's MUTE (MOD's learned lane, Motion's draw mode); -1 none. lane_binding()'s card for a
+// lane turns that lane.
+int turned_lane(const Project& project, unsigned t, const Binding& b);
 // Erase + pot on a kit pad's own value (Tune, Mix, Play's offset, the envelopes, the filter, its sends, cloud and loop
 // crossfade): the card's value on a new pad, false for Trim's handles, a toggle or a choice.
 bool pad_reset_value(const Binding& b, int& value);

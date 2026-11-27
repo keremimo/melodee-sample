@@ -47,6 +47,8 @@ struct Pot {
     uint32_t bound = 0;    // which binding it was last checked against
     float scaled = -1;     // Scaled, not met yet: where the value is, unrounded (0..1); -1 none
 };
+// The value under the pot changed without it: it picks the value up again.
+inline void release(Pot& pot) { pot.engaged = false; pot.bound = 0; }
 
 // SD card access (parity phase 10b, shell/card_access.h): what the page shows.
 // `state` is the base's CardShareState (0 home, 1 lending, 2 lent, 3 returning).
@@ -466,6 +468,10 @@ struct UiState {
     uint32_t turned_at = 0;   // when, in ms
     int8_t last_pot = -1;     // for Shift + wheel fine edits
     bool last_pot_shift = false; // and whether it turned its Shift card
+    uint32_t motion_cursor = 0;  // Motion's cursor, a tick of the pattern: the lane in hand's point there is the one edited (shell/motion_points.h)
+    bool motion_draw = false;    // Motion's draw mode (Shift + B3): the cursor and the points set by hand
+    int16_t motion_pin = -1;     // a lane Push began on Motion, shown first while drawing and it has points (bindings.h motion_lanes)
+    uint8_t motion_pin_track = 0;
     uint32_t held_pads = 0;
     // Shift + Erase: copy one kit pad onto another, one pattern onto another
     // (Seq held, or Patterns), one track onto another (Pad Bank held, or
@@ -588,6 +594,8 @@ struct UiState {
     char notice[32] {};
     uint32_t notice_at = 0;   // ms
 };
+// What the three pots turn changed under them (a new page of values): each picks its value up again.
+inline void release_pots(UiState& ui) { for (auto& pot : ui.pots) release(pot); }
 
 // Chop's Manual chop with no cut yet (one slice, the region) is armed: pad 1 blinks red and starts the take. With cuts
 // it is not, however it came to be (K3 onto Manual, a restore, an undo, Split): the cuts show and pad 1 plays slice 1.

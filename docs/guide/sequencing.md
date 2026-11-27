@@ -464,6 +464,38 @@ unmute the pad there.
 
 ![Motion](../images/screens/motion.png)
 
+You can also draw Motion by hand, as points joined by straight lines,
+without **SEQ RECORD**. Hold **SHIFT** and press **B3** (**DRAW**) to turn
+draw mode on or off; **DRAW** shows in the header while it is on.
+
+You draw on the parameter you turned last on this track, on any page: turn
+a filter on the sound's page, open Motion and press **PUSH**, and its lane
+starts there and shows on **K1**. With nothing turned, it is the lane of the
+knob you turned last on Motion.
+
+- Turn the **encoder** to move the cursor along the pattern, one step of Q
+  at a time. It stops on each point of the lane on the way, and goes as
+  far as the very end of the pattern: a point there is the value the lane
+  reaches as the pattern comes round.
+- **PUSH** adds a point at the cursor, at the value the lane has there. The
+  lane goes in a straight line from it to the next point. From the start
+  of the pattern to the first point the lane holds the first point's
+  value, and after the last point it holds the last one's.
+- Turn the lane's **knob** to set the value of the point under the cursor
+  (with **SEQ RECORD** off). Its card shows the point's value. The fader
+  does the same when it follows that knob.
+- **SHIFT** + **encoder** moves the point under the cursor along the
+  pattern.
+- **ERASE** deletes the point under the cursor.
+- **PUSH** on a point switches it between a line to the next point and a
+  step that holds (recorded points hold). Points on a **MUTE** lane always
+  hold.
+
+Filled dots are points with a line, ringed dots points that hold. Each edit
+is one undo step.
+
+![Motion points](../images/screens/motionpoints.png)
+
 **B3** has three pages: **MOTION**, **MOD** and **MACRO**. Press **B3** again
 to step through them. The dots under the key show which one is open. **B1**
 and **B2** stay **SEQUENCES** and **ROLL** on all three.

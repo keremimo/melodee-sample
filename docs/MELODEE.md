@@ -886,6 +886,28 @@ hold to steer, Shift + Seq to zoom in**.
   (up to 8192 points, at tick resolution): it goes with the pattern when it
   is copied, doubled, halved or sped up, and a lock's lane goes back to what
   it holds as recorded (else the track's value) when the lock ends.
+  **Points by hand** (shell/motion_points.h), in draw mode (Shift + B3,
+  DRAW lit; a DRAW pill in the header; no Seq Record needed): the wheel
+  moves a cursor over the graph a step of Q at a time, stopping on each
+  point of the lane drawn on the way, up to the pattern's end itself (a
+  point there, `tick` == length, is never played: the line before it ends
+  there; doubling keeps it at both ends, another speed keeps it the end). The lane drawn is the parameter
+  turned last on the track, on any page (MOD's learned lane), else the
+  lane of the knob in hand. Push adds a point there, at the value the lane
+  has there, that goes in a straight line to the lane's next point (a
+  ramp, `MotionPoint::ramp`; the engine moves the lane a little each tick,
+  locks aside; the last point holds to the end, and a lane whose first
+  point is one holds its value from the pattern's start; a pad's MUTE
+  lane holds). A lane none of the three showed comes first, on K1
+  (`UiState::motion_pin`). Push on a point makes it go in a line or hold
+  (recorded points hold). Erase tapped (or Erase + Push) takes it out,
+  Shift + wheel moves it a step of Q (past the lane's other points), and
+  with Seq Record off the lane's knob sets its value (its card shows the
+  point's), and so does the fader driving that lane. Up to 64 lanes of a
+  pattern go in a line at once (`motion_ramps_at_once`); an edit past that
+  is taken back ("Too many lines at once"). The ramps are planned off the
+  audio thread (`played_pattern()`, `RampPlan`). Each is one undo. The lane drawn's points are drawn as dots,
+  filled for a line, ringed for a hold, the one under the cursor circled.
 - **MOD: modulators and macros** (roadmap P4): MOTION again on Motion
   (lit) opens MOD. B1 MOD: eight modulators, each an LFO (Sine, Tri, Saw,
   Ramp, Square, S&H, Drift; free from 0.02 to 20 Hz, or on the song's
@@ -2688,7 +2710,7 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
 
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
-  `MOTK` each pattern's motion (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
+  `MOTK` each pattern's motion, `MOTL` which of its points go in a line (older builds skip it: they hold) (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
   `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `KEPT` (punches kept with a pattern), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SLCE` (slice notes recorded on Chop: each note's slice), `SNDS` (a track's
   four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in

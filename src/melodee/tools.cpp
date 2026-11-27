@@ -2976,6 +2976,19 @@ const Preview previews[] {
          }
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"motionpoints", [](Shell& shell, Snapshot& s) { // Motion's points set by hand: the hat's level in lines, the cursor on the third
+         pad_motion_kit(shell, s);
+         s.playing = false; s.ui.recording = false;
+         auto& p = shell.patterns().at[3][0];
+         p.motion.clear();
+         for (auto [sixteenth, value] : {std::pair<unsigned, int>{2, 30}, {5, 110}, {8, 60}, {12, 120}}) {
+             MotionPoint m;
+             m.tick = sixteenth * sixteenth_ticks; m.param = uint8_t(motion_pad_param(PadParam::Level)); m.pad = 8;
+             m.value = int16_t(value); m.ramp = sixteenth != 12;
+             p.write_motion(m);
+         }
+         s.ui.motion_cursor = 8 * sixteenth_ticks; s.ui.motion_draw = true; s.ui.turning = 0; s.ui.last_pot = 0; s.ui.turned_at = s.now;
+     }},
     {"stepseuclid", [](Shell& shell, Snapshot& s) { // STEPS a third time on the kit: the hat's lane as E(5,8), K1 turning its hits
          step_edit_kit(shell, s);
          s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2;
