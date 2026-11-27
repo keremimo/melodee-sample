@@ -25,7 +25,7 @@ inline const char* usage_page_name(PageId page) {
     static const char* const names[] {
         "Stage", "Keys", "Sounds", "Edit", "Roll", "Motion", "Patterns", "Song", "InputConfig", "Rack", "Sends", "Bus",
         "Master", "Pads", "Samples", "Trim", "Chop", "Record", "Project", "Tempo", "Pad", "Play", "Envelope", "Filter",
-        "Follow", "Cloud", "Punch", "Settings", "About", "PadFx", "TimeCorrect", "StepEdit", "PadMix", "PadFilter",
+        "Follow", "Cloud", "Punch", "Settings", "System", "PadFx", "TimeCorrect", "StepEdit", "PadMix", "PadFilter",
         "FilterEnv", "KnobFx", "Compressor", "FlexBeat", "Fader", "MidiConfig", "CardAccess", "Tracks", "Looper",
         "Plugins", "PluginPresets", "Layers", "Mod", "Print", "Scenes", "AutoSample", "Stems", "Mixer"};
     static_assert(sizeof(names) / sizeof(names[0]) == size_t(PageId::Count), "a name for every page");

@@ -1228,7 +1228,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         if (!count) return {};
         return {Binding {Kind::MidiRow, int16_t(row), 0, int(count) - 1, int(midi_row_choice(ui.settings, track, row))}, Binding {}, Binding {}};
     }
-    case PageId::About: return {};
+    case PageId::System: return {};
+    case PageId::Tracks: // the strip in hand, as Stage's MIX: K1 its level, K2 its pan, K3 its send into bus A (pads and the wheel pick the track)
+        return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
+                Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}};
     case PageId::Mixer: return mixer_cards(project, ui, false);
     default: return favourite_bindings(track);
     }

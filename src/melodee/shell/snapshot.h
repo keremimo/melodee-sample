@@ -135,7 +135,7 @@ struct Snapshot {
     unsigned mirror_width = 0, mirror_height = 0;
     bool mirror_fallback = false;
     bool mirror_held = false; // a change asked for waits: a computer shows the camera
-    // About (round 2, about C): how the machine is doing, filled by the app (melodee_app.cpp).
+    // System (round 2, about C): how the machine is doing, filled by the app (melodee_app.cpp).
     struct Machine {
         std::array<uint8_t, 8> core_load {}; // each core busy, percent, over the last half second
         uint8_t cores = 0;                   // 0: not read yet

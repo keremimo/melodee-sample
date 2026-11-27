@@ -10,6 +10,7 @@
 #include "drivers/power_button.h"
 #include "drivers/sd_update.h"
 #include "melodee/shell/update.h"
+#include "melodee/shell/usb_host.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
 #include <spawn.h>
@@ -377,6 +378,12 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         panic_asked.store(true);
         return "OK melodee-midi panic";
     }
+    if (action == "melodee-usb-host") { // melodee-usb-host status: on|off|otg, USB role on the USB-C port
+        if (argument.empty() || argument == "status") return shell.context().usb_host_status();
+        if (argument != "on" && argument != "off" && argument != "otg")
+            return "ERR melodee-usb-host status|on|off|otg";
+        return shell.context().usb_host_set(argument);
+    }
     if (action == "melodee-midi") { // melodee-midi [usb] 90 3c 64
         RemoteMidi m;
         std::string rest = argument;
@@ -476,7 +483,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
     frame->mirror_height = session().mirror.height.load(std::memory_order_relaxed);
     frame->mirror_fallback = session().mirror.fallback.load(std::memory_order_relaxed);
     frame->mirror_held = session().mirror.held.load(std::memory_order_relaxed);
-    { // About: how the machine is doing
+    { // System: how the machine is doing
         auto& m = frame->machine;
         m.cores = machine.cores.load(std::memory_order_relaxed);
         for (unsigned c = 0; c < m.core_load.size(); ++c) m.core_load[c] = machine.core_load[c].load(std::memory_order_relaxed);
@@ -508,7 +515,7 @@ void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
     input_route.service(hardware, plugged);
 }
 
-// About (round 2): each core's load and the plug-ins' every half second, the card's space every five (statvfs()
+// System (round 2): each core's load and the plug-ins' every half second, the card's space every five (statvfs()
 // can wait on a slow card, so not more often, and only while the card is Melodee's).
 void MelodeeApp::read_machine(Hardware& hardware) {
     uint32_t now = now_ms();

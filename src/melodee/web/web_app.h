@@ -39,7 +39,7 @@ struct Facts {
     std::string offer_zip, offer_version; // the update the MPC is asking about, if any
     uint8_t phase = 0, error = 0;        // UpdatePhase, UpdateError (shell/update.h)
     uint64_t scans = 0;                  // counts card checks for updates
-    uint64_t card_free = 0, card_total = 0; // bytes, as About reads them
+    uint64_t card_free = 0, card_total = 0; // bytes, as System reads them
     bool file_sharing = false;           // the SMB server serves the card (base drivers/file_share.h): offered by name
 };
 

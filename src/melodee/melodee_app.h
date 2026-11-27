@@ -64,7 +64,7 @@ private:
     melodee::InputRoute input_route; // service thread: Input Config's source on the hardware, USB-C in, the speaker
     melodee::PluginRack plugins;     // its own thread: the plug-ins the project uses (freed before the engine host)
     melodee::PrintEngine printer;    // its own thread: prints (freeze plan F2a), stopped before the rack and library go
-    // About (round 2): how the machine is doing, read on the service thread (each core every half second, the
+    // System (round 2): how the machine is doing, read on the service thread (each core every half second, the
     // card every five) and copied into the snapshot by the screen thread.
     struct MachineReadings {
         std::array<std::atomic<uint8_t>, 8> core_load {};
