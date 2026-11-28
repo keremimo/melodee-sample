@@ -2,6 +2,16 @@
 
 Changes in Melodee for the Akai MPC Sample. Install and update steps, and the notes of earlier versions, are on the [releases page](https://github.com/keremimo/melodee-sample/releases).
 
+## 0.10.2 (2026-11-28)
+
+### New
+
+- **Sequence colour from the Menu.** On Sequences, hold the encoder to open the Menu and push **COLOUR** (on Patterns: **SEQUENCE COLOUR**). The pads light in the 16 colours. Press a pad or turn the encoder to pick one for the sequence in hand. **B3** (**DONE**) keeps it as one undo step, **B1** (**BACK**) keeps the colour it had, **B2** (**NONE**) takes the colour away. See [Sequences page](https://github.com/keremimo/melodee-sample/blob/main/docs/guide/sequencing.md#sequences-page).
+
+### Licence
+
+- **NOTICE**: Melodee's additional terms under section 7 of the AGPL: author attribution, origin, and the names and logos. It is in the repository and in the zip's `licenses` folder. Each source file of Melodee's own carries its copyright line.
+
 ## 0.10.1 (2026-11-28)
 
 ### Fixed
