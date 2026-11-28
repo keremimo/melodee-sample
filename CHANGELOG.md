@@ -2,6 +2,17 @@
 
 Changes in Melodee for the Akai MPC Sample. Install and update steps, and the notes of earlier versions, are on the [releases page](https://github.com/keremimo/melodee-sample/releases).
 
+## 0.10.3 (2026-11-28)
+
+### New
+
+- **Plug-ins reload by themselves.** Copy a new build of a plug-in over its file on the card (from the web page, over card access, or any other way) and a moment after the copy ends Melodee opens it again on every track that uses it, with the sound it had. The header shows **Reloaded** and the plug-in's name. Melodee looks only at the plug-in's own file: after changing the folders beside it, pick it again with **SAMPLE SELECT**. See [Plug-ins](https://github.com/keremimo/melodee-sample/blob/main/docs/guide/plug-ins.md#what-runs).
+- **For plug-in makers: CLAP `request_restart`.** A CLAP plug-in that calls it is opened again with its state, from a fresh copy of its library, so it reads the files beside it again. [Melodee Modules](https://github.com/keremimo/melodee-modules) uses it to pick up module and SysEx files added to its folders.
+
+### Fixed
+
+- **A MIDI keyboard on 16 Levels plays an instrument pad with its TUNE** (#43). C4 (key 60) plays the pad as its pads play it. In **Zones** the keyboard plays the instrument at its real pitch, as the pads do. See [Sampled instruments](https://github.com/keremimo/melodee-sample/blob/main/docs/guide/kits-and-sampling.md#sampled-instruments).
+
 ## 0.10.2 (2026-11-28)
 
 ### New
