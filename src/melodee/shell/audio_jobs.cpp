@@ -9,6 +9,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/shell/audio_tracks.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/song_take.h"
 #include <algorithm>
 #include <string>
 
@@ -62,9 +63,12 @@ void Context::audio_tick() {
     if (audio_take_track >= 0 && engine_track == audio_take_track) audio_began = true;
     ui.audio_rec_track = int8_t(audio_take_track);
     ui.audio_rec_running = audio_take_track >= 0 && host.audio_take().running();
+    song_take_tick();
+    ui.song_rec_pattern = int8_t(song_take.track >= 0 && !song_take.ended ? song_take.pattern : -1);
     if (audio_began && engine_track < 0) {
         audio_began = false;
-        if (ui.recording && track().is_audio()) {
+        if (song_take.track >= 0 && !song_take.ended) set_recording(false); // its pattern came round: the clip ends
+        else if (ui.recording && track().is_audio()) {
             ui.recording = false;
             if (ui.settings.click == 2) send_click();
         }
@@ -95,6 +99,7 @@ void Context::audio_tick() {
         audio_take_track = -1;
         audio_began = false;
         const unsigned t = take.job.track % track_count;
+        if (song_take.track == int(t)) { land_song_take(take); continue; }
         if (!take.error.empty()) {
             if (take.error != "nothing recorded") notice("Audio: " + take.error);
             continue;
@@ -152,6 +157,121 @@ bool Context::record_audio(unsigned track) {
 void Context::end_audio(bool keep) {
     if (audio_take_track < 0) return;
     host.send({Type::AudioRecord, uint8_t(audio_take_track), 0, 0, int16_t(keep ? -2 : -1)});
+}
+
+// Seq Record on an audio track's lane with the song playing, or Play about to play it from `bar`: the clip first (the
+// track plays only where a clip is, and a take starts at its pattern's top), as long as the pattern can be while it
+// grows, then the take armed as record_audio() arms one. The song plays on past its end while it records.
+bool Context::record_song_audio(unsigned track, unsigned bar) {
+    const unsigned t = track % track_count;
+    if (song_take.track >= 0) { notice("Audio: the last take is still being written"); return false; }
+    if (bar + 1 >= song_bars) { notice("Audio: past the song's last bar"); return false; }
+    const int found = song_take_pattern(project.song, patterns, t);
+    if (found < 0) { notice("No empty pattern left"); return false; }
+    const unsigned p = unsigned(found);
+    auto edit = std::make_unique<Edit>(begin_edit("Record audio", t, int(p), true));
+    auto back = [&] { // the song and the pattern as they were
+        restore_song(*edit->song_before);
+        restore_pattern(t, p, *edit->pattern_before);
+    };
+    if (!project.song.place({uint8_t(t), uint8_t(p), uint16_t(bar), 1, false})) { back(); notice("Song is full"); return false; } // place() cuts first
+    auto& pat = patterns.at[t][p];
+    pat.free = false;
+    pat.length = project.max_length();
+    pat.fit_lanes();
+    sync_pattern(t, p);
+    sync_song();
+    if (!record_audio(t)) { back(); return false; }
+    send({Type::SongRecord, 0, 0, 0, 1});
+    song_take = {};
+    song_take.track = int(t);
+    song_take.pattern = uint8_t(p);
+    song_take.bar = uint16_t(bar);
+    song_take.edit = std::move(edit);
+    return true;
+}
+
+// While the take runs (the song's bar is the audio thread's own then): the clip reaches the bar after the one playing.
+// The song back before the bar last heard (the loop came round, or a jump): Seq Record ends, one pass as a pattern's.
+void Context::song_take_tick() {
+    auto& st = song_take;
+    if (st.track < 0 || st.ended || !host.audio_take().running()) return;
+    const unsigned bar = host.song_bar();
+    if (st.last != ~0u && bar < st.last) { set_recording(false); return; }
+    if (bar >= unsigned(st.bar) + max_bars || bar >= song_bars) { set_recording(false); return; } // the longest a pattern is
+    st.last = bar;
+    if (song_take_grow(project.song, unsigned(st.track), st.pattern, st.bar, bar)) sync_song();
+}
+
+void Context::end_song_take() {
+    auto& st = song_take;
+    if (st.track < 0 || st.ended) return;
+    st.ended = true;
+    send({Type::SongRecord, 0, 0, 0, 0});
+    if (host.audio_take().running()) { // a bar it heard that song_take_tick() has not seen yet
+        const unsigned bar = host.song_bar();
+        if (st.last == ~0u || bar > st.last) st.last = bar;
+    }
+    const unsigned t = unsigned(st.track), p = st.pattern;
+    if (st.last == ~0u) { // it never ran (stopped in the count-in): the song and the pattern as they were
+        restore_song(*st.edit->song_before);
+        restore_pattern(t, p, *st.edit->pattern_before);
+        st.edit.reset();
+        return;
+    }
+    const unsigned bars = song_take_close(project.song, t, p, st.bar, st.last);
+    auto& pat = patterns.at[t][p];
+    pat.length = std::max(bars, 1u) * std::max(project.bar_ticks(), 1u);
+    pat.fit_lanes();
+    sync_pattern(t, p);
+    sync_song();
+    const unsigned before = edits.pushes;
+    commit_edit(std::move(*st.edit));
+    st.edit.reset();
+    st.keep = edits.pushes != before;
+    st.pushes = edits.pushes;
+    dirty = true;
+}
+
+// The take's file is whole (or failed): into the step its clip was kept as, while that is the newest step, or the next
+// redo (undone as it was written); else it is left out (its file goes when the project is opened again).
+void Context::land_song_take(const AudioTakeDone& take) {
+    if (!song_take.ended) { // it failed while it ran
+        end_song_take();
+        if (ui.recording) set_recording(false);
+    }
+    SongTake st = std::move(song_take);
+    song_take = {};
+    if (!take.error.empty()) {
+        if (take.error != "nothing recorded") notice("Audio: " + take.error);
+        return;
+    }
+    const unsigned t = unsigned(st.track) % track_count, p = st.pattern % pattern_count;
+    if (!st.keep || take.job.folder != takes_folder() || !project.tracks[t].is_audio()) return;
+    AudioRegion r;
+    r.take = uint16_t(take.job.take);
+    r.frames = r.take_frames = uint32_t((uint64_t(take.frames) * 44100 + take.rate / 2) / std::max(1u, take.rate));
+    r.tempo = take.job.tempo;
+    if (!r.frames) return;
+    auto ours = [&](const Edit* e) {
+        return e && e->what == "Record audio" && e->track == t && e->pattern == int(p) && e->song_after && e->pattern_after;
+    };
+    Edit* step = nullptr;
+    bool live = false; // the step is done (not undone): the pattern takes the take now
+    if (edits.pushes == st.pushes) {
+        if (ours(edits.latest())) { step = edits.latest(); live = true; }
+        else if (ours(edits.upcoming())) step = edits.upcoming();
+    }
+    if (!step) return;
+    r.frames = uint32_t(std::min<uint64_t>(r.frames, ticks_to_frames(step->pattern_after->length, r.tempo))); // no longer than the clip
+    if (!take.peaks.empty()) { TakePeaks one; one[take.job.take] = take.peaks; add_peaks(std::move(one)); }
+    step->pattern_after->audio = r;
+    if (live) {
+        patterns.at[t][p].audio = r;
+        sync_pattern(t, p);
+        dirty = true;
+    }
+    notice("Track " + std::to_string(t + 1) + ": P" + std::to_string(p + 1) + " recorded");
 }
 
 // Stage's cards on the take of the pattern in hand: level, where it starts and ends in the take (it always plays from

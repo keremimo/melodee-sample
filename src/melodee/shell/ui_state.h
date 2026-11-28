@@ -304,6 +304,7 @@ struct UiState {
     // Freeze plan F3: an audio track's take armed or recording (its track, -1 none), and whether it runs now.
     int8_t audio_rec_track = -1;
     bool audio_rec_running = false;
+    int8_t song_rec_pattern = -1; // Song: the pattern of the clip an audio take is written into (-1 none)
     // Per chain: the slot (or + ADD) and parameter row; the pad chains share the last entry (cursor_of()).
     std::array<uint8_t, mix_chain_count + 1> fx_cursor {}, fx_row {};
     static unsigned cursor_of(unsigned chain) { return chain < mix_chain_count ? chain : mix_chain_count; } // the pads' chains share the last

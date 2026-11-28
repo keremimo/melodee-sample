@@ -14,7 +14,8 @@
 // Erase deletes it, Note Repeat repeats it to the next marker, Loop loops
 // its bars. K1 zoom. Minus / Plus jump between markers (or clip edges while
 // there are none). Shift + Push adds a marker at the cursor, or names it.
-// Play here plays the song from the cursor. Shift + K1 sets the tempo lane at
+// Play here plays the song from the cursor; Seq Record on an audio track's lane records its input into a clip of its
+// own from the cursor (shell/song_take.h), framed red while it grows. Shift + K1 sets the tempo lane at
 // the cursor's bar (roadmap P5; under 30 BPM, none there), Shift + K2 its
 // shape, a step on its bar or a ramp from the point before; with points the
 // lane is a strip over the tracks, its tempo at the cursor beside it. Issue 60 (shell/song_range.h): Pad Bank shows
@@ -111,7 +112,9 @@ void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned 
         p.fill(cx + 1, y + 1, lw, lane_h - 2, selected ? c : colour::bg.interpolatedWith(c, clip.muted ? 0.12f : 0.38f), 2);
     }
     p.text(juce::String(print_pattern_name(clip.pattern)), cx + 3, y, 24, lane_h, plain(selected ? colour::bg : c, type::small, Weight::Bold));
-    if (selected) p.ring(cx + 0.5f, y, cw - 1, lane_h, colour::text, 2.5f);
+    if (s.ui.song_rec_pattern == int(clip.pattern) && s.ui.audio_rec_track == int(clip.track)) // an audio take written into it
+        p.ring(cx + 0.5f, y, cw - 1, lane_h, colour::rec, 2.5f);
+    else if (selected) p.ring(cx + 0.5f, y, cw - 1, lane_h, colour::text, 2.5f);
     p.g.restoreState();
 }
 

@@ -55,8 +55,10 @@ not record.
 
 ![Recording](../images/screens/stageaudiorec.png)
 
-- Press **SEQ RECORD** while the song plays: the take starts the next time
-  the pattern comes round.
+- Press **SEQ RECORD** while the pattern plays: the take starts the next
+  time the pattern comes round.
+- On Song, **SEQ RECORD** records into a new clip at the cursor. See
+  [Record into the song](song.md#audio-tracks).
 - Press **STOP** to end a take early. What was recorded is kept.
 - Recording into a pattern that already has a take replaces it. Press
   **SHIFT** + **−** (Undo) to bring the old take back.

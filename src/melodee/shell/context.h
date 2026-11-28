@@ -40,6 +40,7 @@ class EngineHost;
 class PluginRack;
 class PrintEngine;
 class AudioTracks;
+struct AudioTakeDone;
 struct PluginFile;
 class SampleLibrary;
 struct FrameView;
@@ -439,6 +440,24 @@ public:
     // (and a notice) when it cannot be. end_audio(): it ends now and is kept, or (not begun) is let go.
     bool record_audio(unsigned track);
     void end_audio(bool keep);
+    // Seq Record on an audio track's lane with the song playing (shell/song_take.h): the take in a clip of its own, made
+    // where it starts, in the track's first empty pattern no clip plays. The clip and the pattern go into the history as
+    // Seq Record ends (one step: Undo takes back the clip and the take), the take into that step once its file is whole.
+    struct SongTake {
+        int track = -1;               // -1: none
+        uint8_t pattern = 0;
+        uint16_t bar = 0;             // where the clip starts
+        unsigned last = ~0u;          // the last bar heard while the take ran (~0u: it has not run)
+        bool ended = false;           // Seq Record ended: the take's file to come
+        bool keep = false;            // its step kept: the take goes into it
+        unsigned pushes = 0;          // History::pushes once its step was kept
+        std::unique_ptr<Edit> edit;   // until Seq Record ends
+    } song_take;
+    unsigned song_started = 0; // the bar the song last played from (Play, Shift + Play)
+    bool record_song_audio(unsigned track, unsigned bar);
+    void song_take_tick();  // often: the clip grows while the take runs; the loop coming round ends it
+    void end_song_take();   // Seq Record off: the clip ends with the last bar heard, and is kept
+    void land_song_take(const AudioTakeDone& take);
     void set_region_value(const Binding& b, int value); // Stage's CLIP and FADES cards on the pattern's take
     struct PrintAsk {
         uint8_t track = 0;

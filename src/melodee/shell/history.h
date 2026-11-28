@@ -265,6 +265,7 @@ public:
     const Edit* last() const { return undo_.empty() ? nullptr : &undo_.back(); }
     Edit* latest() { return undo_.empty() ? nullptr : &undo_.back(); }
     const Edit* next() const { return redo_.empty() ? nullptr : &redo_.back(); } // what a redo would do
+    Edit* upcoming() { return redo_.empty() ? nullptr : &redo_.back(); }
     // Every edit kept, to undo and to redo (roadmap P3: which sample slots they could bring back).
     template <typename F> void each(F&& f) const { for (const auto& e : undo_) f(e); for (const auto& e : redo_) f(e); }
     unsigned pushes = 0; // edits kept so far: a press that kept its own edit is not kept twice (shell/undo_scope.h)

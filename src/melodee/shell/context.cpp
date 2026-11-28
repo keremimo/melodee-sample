@@ -2416,6 +2416,7 @@ void Context::play(bool external) {
     if (host.playing()) return;
     if (ui.jam_sheet && ui.page == PageId::Song && !external) { audition_jam(); return; } // JAMS: the picked jam
     played_song = ui.page == PageId::Song;
+    if (played_song) song_started = ui.song_cursor;
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     // A loop armed while stopped counts in as a recording does (docs/LOOPER.md).
@@ -2436,10 +2437,11 @@ void Context::fill(bool on) {
 // Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).
 void Context::play_continue(bool external) {
     if (host.playing()) return;
+    if (played_song) song_started = host.song_bar(); // from the bar it stopped in
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
-    if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
+    if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(song_started), 1});
     else { Command c {Type::Play, uint8_t(count)}; c.position = uint32_t(played_ticks(ui.locate, track().speed)); send(c); } // as the track plays it
     if (external) send({Type::ExtSync, 0, 0, 3});
 }
@@ -2518,8 +2520,16 @@ void Context::set_recording(bool on) {
     if (on == ui.recording) return;
     if (track().is_audio() || (!on && audio_take_track >= 0)) { // freeze plan F3: an audio track's take (shell/audio_jobs.cpp)
         ui.rec_armed = false;
-        if (on && !record_audio(ui.track)) return;
-        if (!on) end_audio(true);
+        if (on) {
+            // With the song playing, a clip of its own from the bar it starts on (Play: where the song starts; playing:
+            // the next bar). Else one pass of the pattern in hand.
+            const bool song = host.playing() ? host.song_playing() : played_song;
+            const unsigned bar = !host.playing() || host.count_in() ? song_started : host.song_bar() + 1;
+            if (!(song ? record_song_audio(ui.track, bar) : record_audio(ui.track))) return;
+        } else {
+            end_song_take(); // first: the bar the take is on, before it ends
+            end_audio(true);
+        }
         ui.recording = on;
         if (ui.settings.click == 2) send_click();
         return;
@@ -2546,7 +2556,8 @@ void Context::set_recording(bool on) {
 void Context::seq_record() {
     if (ui.recording) { set_recording(false); return; }
     if (frozen_edit(ui.track)) return; // freeze plan F2c: "Unfreeze track N?" first
-    if (track().used() && track().off && !host.song_playing()) { // off in its sequence: a new take in its first empty pattern, kept
+    const bool song_audio = track().is_audio() && (host.playing() ? host.song_playing() : ui.page == PageId::Song); // a clip of its own
+    if (track().used() && track().off && !host.song_playing() && !song_audio) { // off in its sequence: a new take in its first empty pattern, kept
         int empty = -1;
         for (unsigned n = 0; n < pattern_count && empty < 0; ++n) if (patterns.at[ui.track % track_count][n].empty()) empty = int(n);
         if (empty < 0) { notice("No empty pattern left"); return; }

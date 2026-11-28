@@ -122,6 +122,7 @@
 #include "melodee/shell/menu.h"
 #include "melodee/shell/stems.h"
 #include "melodee/shell/stems_room.h"
+#include "melodee/shell/song_take.h"
 #include "melodee/shell/sample_memory.h"
 #include "melodee/shell/stream_holds.h"
 #include "melodee/engine/stream_pager.h"
@@ -944,6 +945,31 @@ void sampler_kit() {
         for (unsigned b = 0; b < 2 * 88200 / 128; ++b) host.render(out.data(), 128, 1);
         CHECK(!host.playing());
     }
+    // An audio track's take on Song (shell/song_take.h): armed, it waits while its lane has no clip, starts with the
+    // clip's first bar (its pattern as long as a pattern can be, so no pass ends it), and ends where -2 says, kept.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[2], EngineKind::Audio, 0);
+        bank->at[2][4].length = project->max_length();
+        project->song.place({2, 4, 1, 2, false}); // bars 2-3; bar 1 silent on its lane
+        auto host_held = std::make_unique<EngineHost>();
+        auto& host = *host_held;
+        host.load(*project, *bank);
+        host.send({Command::Type::AudioRecord, 2, 0, 0, 0});
+        host.send({Command::Type::SongRecord, 0, 0, 0, 1});
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        std::vector<int32_t> out(256);
+        for (unsigned b = 0; b < 88200 / 2 / 128; ++b) host.render(out.data(), 128, 1); // half of bar 1
+        CHECK(host.audio_take_track() == 2 && host.audio_take().cued() && host.audio_take_pattern() < 0);
+        for (unsigned b = 0; b < 88200 / 128; ++b) host.render(out.data(), 128, 1); // into bar 2
+        CHECK(host.song_bar() == 1 && host.audio_take().running() && host.audio_take_pattern() == 4);
+        for (unsigned b = 0; b < 88200 / 128; ++b) host.render(out.data(), 128, 1); // into bar 3: no pass ends it
+        CHECK(host.song_bar() == 2 && host.audio_take().running());
+        host.send({Command::Type::AudioRecord, 2, 0, 0, -2});
+        host.render(out.data(), 128, 1);
+        CHECK(host.audio_take_track() == -1 && !host.audio_take().running() && !host.audio_take().cued());
+    }
     // Motion on an effect: the track's filter shut at step 8 by a written event, open again from step 0.
     {
         auto project = std::make_unique<Project>();
@@ -1745,6 +1771,38 @@ void button_remap() {
         for (unsigned n = 0; n < count; ++n) CHECK(items[n].job != MenuJob::TrackColour);
         m.colour_sheet = true; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::ColourPick);
         m.ask = UiState::Ask::ClearTrack; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::Sheet);
+    }
+    // An audio track's take on Song (shell/song_take.h): the first empty pattern no clip plays; the clip reaches the bar
+    // after the one playing, what was there giving way; closed on the last bar heard.
+    {
+        Song song;
+        auto bank = std::make_unique<PatternBank>();
+        bank->at[3][0].events.push_back({}); // P1 holds a note
+        song.place({3, 1, 8, 2, false});      // P2 empty, but on the lane
+        CHECK(song_take_pattern(song, *bank, 3) == 2);
+        song.place({3, 5, 2, 4, false});      // T4 bars 3-6, P6
+        song.place({3, 2, 1, 1, false});      // the take's clip at bar 2, P3
+        CHECK(song_take_pattern(song, *bank, 3) == 3);
+        CHECK(!song_take_grow(song, 3, 2, 1, 0)); // the count before it: it holds bar 2 already
+        CHECK(song_take_grow(song, 3, 2, 1, 1) && song.clips[size_t(song_take_clip(song, 3, 2, 1))].bars == 2);
+        const int p6 = song.clip_at(3, 3);
+        CHECK(p6 >= 0 && song.clips[size_t(p6)].bar == 3 && song.clips[size_t(p6)].bars == 3); // gave way a bar
+        CHECK(song_take_grow(song, 3, 2, 1, 2) && song.clips[size_t(song_take_clip(song, 3, 2, 1))].end() == 4);
+        CHECK(!song_take_grow(song, 3, 2, 1, 2)); // once a bar
+        CHECK(song_take_close(song, 3, 2, 1, 2) == 2 && song.clips[size_t(song_take_clip(song, 3, 2, 1))].end() == 3);
+        CHECK(song.clip_at(3, 3) < 0 && song.clip_at(3, 4) >= 0 && song.clips[size_t(song.clip_at(3, 4))].pattern == 5); // what gave way stays cut
+        CHECK(song_take_close(song, 3, 2, 1, 0) == 1); // never under a bar
+        CHECK(song_take_close(song, 3, 7, 1, 4) == 0); // gone
+        Song long_one;
+        long_one.place({0, 0, 10, 1, false});
+        for (unsigned bar = 10; bar < 10 + max_bars + 4; ++bar) song_take_grow(long_one, 0, 0, 10, bar);
+        CHECK(long_one.clips[0].bars == max_bars);
+        Song looped; // the loop ahead: the clip stops at its end, the clip after it keeps its first bar
+        looped.loop_start = 0; looped.loop_end = 4;
+        looped.place({1, 0, 2, 1, false});
+        looped.place({1, 1, 4, 2, false});
+        CHECK(song_take_grow(looped, 1, 0, 2, 2) && looped.clips[size_t(song_take_clip(looped, 1, 0, 2))].end() == 4);
+        CHECK(!song_take_grow(looped, 1, 0, 2, 3) && looped.clip_at(1, 4) >= 0 && looped.clips[size_t(looped.clip_at(1, 4))].pattern == 1);
     }
     // Song (issue 60, shell/song_range.h): the loop range copied, pasted as an insert and taken out, on one lane or
     // every lane with the markers and tempo points; K2's list of the patterns that hold notes and the next empty.

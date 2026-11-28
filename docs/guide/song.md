@@ -85,6 +85,25 @@ becomes a clip.
 Pad FX punches you play while recording are written into the song too.
 They end where the song ends.
 
+### Audio tracks
+
+On an audio track's lane, **SEQ RECORD** records the track's input onto the
+lane. The input is the one set on Stage's **INPUT** (**B2**).
+
+1. Press the track's pad to select its lane. Move the cursor to the bar to
+   start on.
+2. Press **SEQ RECORD**, then **PLAY**. After the count-in the take starts
+   at the cursor, in a new clip of the track's first empty pattern. The clip
+   has a red frame and grows a bar at a time.
+3. Press **SEQ RECORD** again, or **STOP**. The clip ends with the bar that
+   was playing. Its pattern is as long as the clip.
+
+- Press **SEQ RECORD** while the song plays: the take starts on the next bar.
+- Clips under the take give way to it.
+- With a loop on, the take stops when the loop comes round. A take is 128
+  bars at most.
+- **SHIFT** + **−** (Undo) takes back the clip and its take together.
+
 ## Jam capture
 
 Melodee keeps each jam. From **PLAY** to **STOP** outside Song, it notes
