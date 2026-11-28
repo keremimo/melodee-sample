@@ -108,6 +108,7 @@ def collect(binary, version, commit, stems=ROOT / "build/stems"):
     files[f"{PACKAGE}/README.txt"] = readme(version, commit)
     licenses = f"{PACKAGE}/licenses"
     files[f"{licenses}/LICENSE-AGPL-3.0.txt"] = (ROOT / "LICENSE").read_bytes()
+    files[f"{licenses}/NOTICE.txt"] = (ROOT / "NOTICE").read_bytes() # the additional terms under section 7
     files[f"{licenses}/THIRD_PARTY.md"] = (ROOT / "THIRD_PARTY.md").read_bytes()
     files[f"{licenses}/ellic-core-LICENSE.txt"] = (ROOT / "core/LICENSE").read_bytes() # the core/ submodule, MIT
     files[f"{licenses}/Rubik-OFL.txt"] = (ROOT / "build/deps/rubik/OFL.txt").read_bytes()

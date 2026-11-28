@@ -1,0 +1,32 @@
+Melodee
+Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+
+Melodee is licensed under the GNU Affero General Public License, version 3
+only (LICENSE). As section 7 of that licence allows, the additional terms
+below apply to the material in this repository whose copyright is held by
+Kerem Kilic (Ellic Studio). They do not apply to material by others: JUCE,
+the fonts and other parts listed in THIRD_PARTY.md, and code written by other
+contributors.
+
+1. Author attribution (section 7(b)).
+   A work that contains this material and has an interactive user interface
+   keeps these two lines among its Appropriate Legal Notices, where a user
+   can find them as easily as Melodee's Credits page (Settings > About, B3):
+
+       Based on Melodee by Kerem Kilic (Ellic Studio)
+       Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+
+   The name may be written Kilic or Kiliç. The SPDX, copyright and
+   additional-terms lines at the top of each source file stay as they are.
+
+2. Origin (section 7(c)).
+   Nobody may present this material, or a modified version of it, as their
+   own original work. A modified version is marked as different from
+   Melodee: it has its own name, and its release notes and changelog present
+   changes made in Melodee as Melodee's, not as the modified version's.
+
+3. Names and logos (section 7(e)).
+   This licence grants no rights under trademark law to the names "Melodee"
+   and "Ellic Studio", or to Melodee's logo and boot art (see THIRD_PARTY.md,
+   Boot art), beyond stating truthfully where a work comes from, as item 1
+   asks.

@@ -58,6 +58,7 @@ class ReleaseTests(unittest.TestCase):
         # Firmware 1.4 runs only an autorun.sh at the card's top: it runs the folder's.
         self.assertEqual(files["autorun.sh"], (ROOT / "base/install/top-autorun.sh").read_bytes())
         self.assertIn("autorun/melodee/licenses/LICENSE-AGPL-3.0.txt", files)
+        self.assertIn(b"section 7", files["autorun/melodee/licenses/NOTICE.txt"])
         self.assertIn(b"MIT License", files["autorun/melodee/licenses/ellic-core-LICENSE.txt"])
 
     def test_the_stem_separator_ships_in_a_folder_of_its_own(self):
