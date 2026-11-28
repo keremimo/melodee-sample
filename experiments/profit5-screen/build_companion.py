@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """The Profit-5 panel as a companion screen package (sdk/melodee-screen/melodee_companion.h).
 
 Builds build/profit5-screen/package/Profit-5 Panel/ with screen-aarch64.so, screen.json and LICENSE: the folder to

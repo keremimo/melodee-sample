@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """A PCM WAV read in place by the stream pager (src/melodee/engine/stream_pager.cpp), built for the host."""
 import os
 from pathlib import Path

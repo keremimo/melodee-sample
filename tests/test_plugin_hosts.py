@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Melodee's plug-in hosts against fixture plug-ins, linked with the objects
 make built: the CLAP host (tests/clap_host.cpp), the VST2 host
 (tests/vst2_host.cpp) and JUCE's LV2 host as the rack uses it

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Melodee entry point: the sample-base runtime (base/src/runtime/) hosting
 // MelodeeApp, plus Melodee's own tools (--self-test, previews, sound check).
 #include "runtime/app.h"

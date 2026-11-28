@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Make a Melodee release zip: one autorun folder and an autorun.sh beside
 it, to unzip or copy to the top of the MPC Sample's microSD card. The
 README, licences and source note ride inside it, in autorun/melodee/.

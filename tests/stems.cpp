@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Stems (src/melodee/shell/stems.h) with stand-ins for the separating program: shell scripts that take its
 // arguments, print its lines and write its four files. A job copies the program into its work folder, gives it the
 // model and the sample as a WAV file, writes what it made to the paths asked for at the sample's length and leaves

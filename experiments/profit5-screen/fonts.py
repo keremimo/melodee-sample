@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Rasterise the pinned upstream's OFL Liberation Sans into build-only C arrays."""
 import sys
 from pathlib import Path

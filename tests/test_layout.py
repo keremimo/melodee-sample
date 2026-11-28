@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Melodee sits on the base's layers and the core (ellic-core), nothing else (base/docs/APPS.md)."""
 from pathlib import Path
 import re

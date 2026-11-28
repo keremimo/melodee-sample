@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # lo-fly for Melodee (README.md). Builds into build/lo-fly/ from lo-fly's dsp/ at a commit (LOFLY_REV, default
 # HEAD), or from a copy of its working tree (LOFLY_REV=WORKTREE).
 #   make            the MPC Sample's lo-fly folder (aarch64 Linux, glibc 2.28, through zig) and the Mac bundle

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Build no-op stand-ins for the desktop GUI libraries VST3 plug-ins link
 for their editors (libGL, libX11, libXext, libXrandr, libXcursor...).
 

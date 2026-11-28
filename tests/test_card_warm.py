@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """The card's folders read ahead of the kernel (src/melodee/shell/card_warm.cpp), built for the host."""
 import os
 from pathlib import Path

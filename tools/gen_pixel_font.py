@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Melodee Pixel (src/melodee/ui/fonts/melodee_pixel.txt, FM-1 Melodee's 5 x 7 face) as TrueType fonts in
 build/deps/fonts/melodeepixel/, for Settings > SCREEN > Font: tools/dependencies.py runs this before each
 build and src/melodee/ui/font_data.cpp embeds the result. Each '#' is a square of 100 units in a 1000-unit

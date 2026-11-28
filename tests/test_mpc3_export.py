@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """A project written as an MPC 3 project by the built app, then read back."""
 import gzip
 import json

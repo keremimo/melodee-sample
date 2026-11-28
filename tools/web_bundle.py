@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Builds the web page's bundle (src/melodee/web/web_bundle.h).
 
 The device page, the quickstart and the user guide are written as HTML pages

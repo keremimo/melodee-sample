@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # Build Melodee for the MPC Sample (linux/arm64) in its build image (the base's
 # plus tools/plugin_support/Dockerfile),
 # and the stem separator beside it (make stems, tools/stems/build.py),

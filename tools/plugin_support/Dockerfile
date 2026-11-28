@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # Melodee's build image: the base's (base/tools/Dockerfile) plus what the
 # plug-in support pack is made from (tools/plugin_support/build.py): the
 # armhf cross compiler and runtime for the 32-bit bridge, the GUI libraries

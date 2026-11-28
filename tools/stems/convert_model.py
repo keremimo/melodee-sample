@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Deezer's Spleeter 4-stem model (a TensorFlow checkpoint, MIT) as the file the stem separator reads
 (tools/stems/stems_engine.c): the four networks' weights laid out as SpleeterRT's network code wants them
 (its spleeterCoeff), as 16-bit floats.

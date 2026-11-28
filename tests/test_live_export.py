@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """A project written as an Ableton Live Set by the built app (core/src/melodee/shell/live_export.h), then read back."""
 import gzip
 from pathlib import Path

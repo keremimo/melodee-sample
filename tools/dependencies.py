@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Fetch the pinned dependencies into ignored build/deps: JUCE (through the
 base's tools/dependencies.py) and Melodee's own (src/melodee/dependencies.py)."""
 from pathlib import Path

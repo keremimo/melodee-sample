@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Melodee's screen palettes (Settings > SCREEN > Palette) into src/melodee/ui/palettes.h.
 
 NIGHT is the design's own (ui/tokens.h, ui/shades.h) and is written as it is. The others are FM-1 Melodee's

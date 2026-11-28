@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # vst_probe, a command-line VST3 / VST2 host for the MPC on Melodee's plug-in
 # code (src/melodee/plugin/). Run from the repository root inside Melodee's
 # build image after Melodee's own build: it reuses its JUCE objects, hosting

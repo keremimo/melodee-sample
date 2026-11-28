@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // A PCM WAV read in place (src/melodee/engine/stream_pager.h's read_in_place()): an instrument's file streamed from the
 // card as it is, with no copy laid out. Each chunk the pager fills holds the floats the WAV reader makes of the same
 // frames, for every kind of PCM it reads; chunks are counted across two pagers; a file that ends short stops the

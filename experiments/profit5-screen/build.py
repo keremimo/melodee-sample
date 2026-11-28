@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Isolated Profit-5 + Melodee screen build. Downloads and products stay in build/."""
 import argparse
 import json

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Melodee's tests that need its shell (the core's own are core/tests), built for the host."""
 import os
 from pathlib import Path

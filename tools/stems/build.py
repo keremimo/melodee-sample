@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Build the stem separator Melodee runs beside itself (src/melodee/shell/stems.h):
 
   melodee-stems         tools/stems/stems_engine.c, Melodee's own, on SpleeterRT's

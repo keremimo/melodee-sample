@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """The web page's HTTP server (src/melodee/web/web_server.cpp), built for the host (Linux)."""
 import os
 from pathlib import Path

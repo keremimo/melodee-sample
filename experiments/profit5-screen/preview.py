@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Convert the actual SDK framebuffers and arrange a review sheet; never changes panel art."""
 from pathlib import Path
 import sys

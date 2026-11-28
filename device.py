@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Run Melodee on an MPC Sample over SSH: the base's device.py
 (base/device.py) with this repository's build. Same commands: start,
 install-sd, uninstall-sd, status, ctl, screenshot (and stock)."""

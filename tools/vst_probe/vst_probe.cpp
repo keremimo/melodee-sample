@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // vst_probe: try VST3 and VST2 plug-ins on the MPC Sample with JUCE's
 // headless host, before Melodee grows VST instrument tracks and VST effect
 // slots. VST3 goes through JUCE's VST3 format; VST2 (.so, e.g. Open MPC's

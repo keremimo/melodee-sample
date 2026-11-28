@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # Screen Example (screen_example.cpp): one library with both entry points.
 #   make            screen-example.clap and screen-example.so for this machine (aarch64 Linux for the MPC Sample)
 #   make armv7      screen-example-armv7.so, the VST2 for 32-bit ARM (Melodee runs it in its bridge)

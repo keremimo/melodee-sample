@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # Build, strip and package a Melodee release: ./release.sh v0.1.0-alpha.1
 # writes dist/Melodee-MPC-Sample-<version>.zip and its .sha256.
 set -eu

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Melodee's web page: the link to the MPC in the header on every page, the
 // device page's update and plug-in uploads, and the docs' side lists.
 "use strict";

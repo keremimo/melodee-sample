@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The card's folders read ahead (src/melodee/shell/card_warm.h): a small exFAT volume made here, walked from its
 // image file. Every folder is found once, by a chain in the FAT or by its length; only a folder's entries up to
 // its end mark are read; a folder that names one above it does not go round; what is not exFAT is left alone.

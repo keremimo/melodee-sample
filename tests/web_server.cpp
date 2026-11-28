@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The web page's server (src/melodee/web/web_server.h) on a free port: what it refuses, and a body read whole.
 #include "melodee/web/card_files.h"
 #include "melodee/web/mdns.h"

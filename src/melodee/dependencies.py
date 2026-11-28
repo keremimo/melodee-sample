@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Fetch Melodee's pinned dependencies into ignored build storage: its typefaces,
 Rubik and the faces Settings' Font offers (SIL OFL 1.1), the CLAP plug-in headers (MIT), and the
 stem separator's sources: SpleeterRT (GPL-3.0), OpenBLAS (BSD-3-Clause) and Deezer's Spleeter 4-stem model (MIT).

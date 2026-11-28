@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 # Melodee on the sample-base runtime: the base layers come from the base/
 # submodule, the engine, model and files from the core/ submodule
 # (ellic-core, shared with melodee-move), Melodee's screens and main.cpp

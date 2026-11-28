@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Stems (src/melodee/shell/stems.cpp) with stand-ins for the separating program, built for the host."""
 import os
 from pathlib import Path
