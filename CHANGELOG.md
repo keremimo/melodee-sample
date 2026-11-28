@@ -2,6 +2,16 @@
 
 Changes in Melodee for the Akai MPC Sample. Install and update steps, and the notes of earlier versions, are on the [releases page](https://github.com/keremimo/melodee-sample/releases).
 
+## 0.10.1 (2026-11-28)
+
+### Fixed
+
+- **USB-C audio from a computer or phone at 44.1 kHz** (#74). With the MPC at 44.1 kHz, part of what a Mac or an iPhone played into the MPC could arrive as short bursts of silence: in a take, on a sampled pad and while monitoring, on some starts and not others. Melodee now starts its USB-C stream back to the computer as soon as the computer starts playing, so the computer keeps time with the MPC from the start.
+
+### New
+
+- **Record into the song on an audio track.** On Song, select an audio track's lane, move the cursor to the bar to start on, press **SEQ RECORD**, then **PLAY**. The track's input records into a new clip at the cursor, which grows a bar at a time. **SEQ RECORD** again or **STOP** ends it. **SHIFT** + **−** takes back the clip and the take together. See [Record into the song](https://github.com/keremimo/melodee-sample/blob/main/docs/guide/song.md#audio-tracks).
+
 ## 0.10.0 (2026-11-27)
 
 Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colour you picked shows as the colour of the track's place, and a pad whose layers follow a CC plays as **Random hold**.
