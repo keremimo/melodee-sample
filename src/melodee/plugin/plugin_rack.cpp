@@ -877,13 +877,18 @@ std::string PluginRack::reload_notice() {
     return first;
 }
 
+// Milliseconds on a clock that only goes up (plugin/plugin_watch.h's).
+static uint32_t rack_ms() {
+    return uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 // The file each plug-in in use was opened from, every watch_every_ms: one changed, once it held still, opened again
 // with what it is now, as picking it again does (plugin/plugin_watch.h). Its stat()s outside `lock`. The live rack
 // only: a print host's rack plays a copy of the project, once.
 void PluginRack::watch_files() {
     if (!stage_tag.empty()) return;
-    const uint32_t now = uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count());
+    const uint32_t now = rack_ms();
     if (now - watch_last < watch_every_ms) return;
     watch_last = now;
     struct Look { unsigned entry; uint32_t generation; std::string path; FileStamp stamp; };
@@ -1590,6 +1595,7 @@ void PluginRack::load(const Job& job) {
             raw->program = program_keyed(raw->programs, entry.preset); // its state already plays it: the name only
             entry.live = raw;
             entry.status = PluginStatus::Ready;
+            entry.ready_at = rack_ms();
             entry.file.instrument = is_instrument ? 1 : 0;
             if (description.name.isNotEmpty() && named_inside(file.format)) entry.file.name = description.name.toStdString();
         }
@@ -1845,6 +1851,7 @@ void PluginRack::idle_plugins() {
     bool moved = false;
     for (auto* h : clap) {
         h->clap->idle();
+        if (h->clap->takeRestart()) restart(h);
         if (!h->clap->remotePagesChanged()) continue; // its pages (a preset's own, say): read again
         auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown, h->file_pages));
         std::lock_guard<std::mutex> held(lock);
@@ -1852,6 +1859,27 @@ void PluginRack::idle_plugins() {
         moved = true;
     }
     if (moved) changed();
+}
+
+// A CLAP plug-in's request_restart(): the entry it plays in opened again with its state, as when its file changes,
+// once it has played a little (restart_allowed()); a print host's rack lets it go (it plays a copy, once).
+void PluginRack::restart(PluginHandle* handle) {
+    std::lock_guard<std::mutex> held(lock);
+    for (unsigned e = 0; e < max_plugins; ++e) {
+        auto& entry = entries[e];
+        if (entry.live != handle || entry.status != PluginStatus::Ready || entry.reload) continue;
+        if (!stage_tag.empty() || !restart_allowed(entry.ready_at, rack_ms())) {
+            std::fprintf(stderr, "plugins: %s asked to restart as it opened, left as it is\n", entry.file.name.c_str());
+            return;
+        }
+        keep_state(entry);
+        entry.reload = true; // the next sync() opens it again
+        const std::string said = "Reloaded " + entry.file.name;
+        if (std::find(reload_notices.begin(), reload_notices.end(), said) == reload_notices.end())
+            reload_notices.push_back(said);
+        std::fprintf(stderr, "plugins: %s asked to restart, opened again\n", entry.file.name.c_str());
+        return;
+    }
 }
 
 // --- A plug-in's own screen (plugin/plugin_screen.h, sdk/melodee-screen/melodee_screen.h) ---

@@ -10,7 +10,8 @@
 // thread looks every watch_every_ms at the file each entry was opened from: its size and time, its "stamp". A
 // changed one is opened again once it has held still for watch_settle_ms, so a file still being copied never opens.
 // Only the plug-in's own file is looked at (a bundle's: its library), never the folders beside it, which a plug-in may
-// write itself. Pure, so the host tests follow it.
+// write itself. A CLAP plug-in may ask for the same with request_restart() (restart_allowed() below). Pure, so the
+// host tests follow it.
 namespace melodee {
 
 constexpr uint32_t watch_every_ms = 2000;
@@ -62,5 +63,11 @@ inline bool watch_look(FileWatch& w, const FileStamp& now, uint32_t now_ms, uint
     w.seen = {};
     return true;
 }
+
+// A CLAP plug-in's request_restart(): honoured as the file's change is (opened again with its state), once it has
+// played restart_quiet_ms since it opened; one asked sooner is let go, so a plug-in that asks at each start never
+// opens over and over. `ready_at`, `now_ms`: on the same clock as watch_look's.
+constexpr uint32_t restart_quiet_ms = 3000;
+inline bool restart_allowed(uint32_t ready_at, uint32_t now_ms) { return now_ms - ready_at >= restart_quiet_ms; }
 
 } // namespace melodee

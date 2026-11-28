@@ -11735,6 +11735,10 @@ void plugin_file_watch() {
     CHECK(b.size == 7 && b != a);
     std::filesystem::remove(path);
     CHECK(!stamp_of(path).there());
+    // request_restart(): honoured once the plug-in has played 3 s since it opened, not sooner (one that asks at each
+    // start would open over and over); across the clock's wrap too
+    CHECK(!restart_allowed(1000, 1000) && !restart_allowed(1000, 3999) && restart_allowed(1000, 4000));
+    CHECK(restart_allowed(0xFFFFF000u, 0xFFFFF000u + 3000u) && !restart_allowed(0xFFFFFF00u, 100u));
 }
 
 // Freeze plan F2d: a deep freeze in the file and in the plug-in rack's bookkeeping (plugin/plugin_sleep.h). FRZN

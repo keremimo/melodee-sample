@@ -88,7 +88,8 @@ public:
     void clone(unsigned entry, unsigned copy);
     // The same plug-in opened again at the next sync() (picked again after it failed or stopped working), with the
     // state it last had. The live rack also does it by itself for a plug-in whose file on the card changed
-    // (plugin/plugin_watch.h); reload_notice() then names it, once ("" none).
+    // (plugin/plugin_watch.h), and for a CLAP plug-in that asked with request_restart(); reload_notice() then names
+    // it, once ("" none).
     void reload(unsigned entry);
     std::string reload_notice();
     // One entry's state as it is now, as states() gives it.
@@ -170,6 +171,7 @@ private:
         std::string error;
         PluginFile file;
         FileWatch watch;                  // its file on the card, as it was opened (plugin/plugin_watch.h)
+        uint32_t ready_at = 0;            // when it last opened (rack_ms()), for restart_allowed()
     };
     struct Job {
         enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep, Presets } kind = Kind::Browse;
@@ -191,6 +193,7 @@ private:
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
     void watch_files();                             // plug-ins whose file changed: opened again (live rack only)
+    void restart(PluginHandle* handle);             // a CLAP plug-in's request_restart(): opened again
     void keep_state(Entry& entry);                  // a working plug-in's state now into `state` (under `lock`)
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
     void write_page_problems(const std::string& top); // the page files' problems on the card (plugin/page_file.h)

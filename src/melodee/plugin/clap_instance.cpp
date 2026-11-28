@@ -114,6 +114,7 @@ struct ClapInstance::Host
     std::atomic<bool> remoteChanged { false }; // remote-controls changed(): its pages to be read again
     std::atomic<bool> process { false }; // request_process or request_flush: run the next block even if it sleeps
     std::atomic<bool> redraw { false };  // its screen asked to be drawn (sdk/melodee-screen/melodee_screen.h)
+    std::atomic<bool> restart { false }; // request_restart(): the rack opens it again, with its state (takeRestart())
     std::atomic<uint32_t> keys { 0 };    // the printed buttons its screen's page takes (MELODEE_SCREEN_KEY_ bits)
 
     Host()
@@ -125,7 +126,9 @@ struct ClapInstance::Host
         host.url = "";
         host.version = "1";
         host.get_extension = &extension;
-        host.request_restart = [] (const clap_host*) {}; // not while it plays: a reload (picked again) restarts it
+        // request_restart (any thread): the rack opens it again with its state, as picking it again does
+        // (PluginRack::idle_plugins), a fresh copy of its library included
+        host.request_restart = [] (const clap_host* h) { of (h).restart.store (true, std::memory_order_release); };
         // The rack does not run a silent plug-in (plugin/idle_gate.h): asked, it runs the next block anyway.
         host.request_process = [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); };
         host.request_callback = [] (const clap_host* h) { of (h).callback = true; };
@@ -455,6 +458,8 @@ void ClapInstance::readLatency()
     if (latency != nullptr && active)
         setLatencySamples ((int) std::min<uint32_t> (latency->get (plugin), 1u << 20)); // roadmap P4
 }
+
+bool ClapInstance::takeRestart() { return host->restart.exchange (false, std::memory_order_acq_rel); }
 
 void ClapInstance::idle()
 {

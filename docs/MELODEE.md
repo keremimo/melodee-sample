@@ -2639,7 +2639,17 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   changed files. Each preset's folder under its location is its folder in
   PRESETS; with more than one location holding presets (Surge XT: Factory,
   Third Party, User), each location is a folder too, named without the
-  plug-in's name. No editor windows, as for VST3.
+  plug-in's name. No editor windows, as for VST3. A plug-in's
+  `request_restart()` (from any thread) opens it again with its state, as
+  picking it again does, its library copied afresh from the card: a plug-in
+  that reads files beside it when its library loads (Melodee Modules' module
+  files) sees them again. One asked within 3 s of opening is let go, so a
+  plug-in that asks at each start never opens over and over.
+- **Plug-in files changed on the card.** Every 2 s the rack looks at the
+  file each plug-in in use was opened from (a bundle's library). A changed
+  one is opened again with its state once it has held still a second, and
+  the header says Reloaded (`plugin/plugin_watch.h`). The folders beside a
+  plug-in are not looked at: a plug-in may write there itself.
 - **LV2.** JUCE's own LV2 host (lilv, bundled in JUCE), with a lilv world
   for each plug-in opened, made on the message thread. A bundle's presets
   (`pset:Preset`) are its programs, so PRESETS lists them. JUCE cannot
