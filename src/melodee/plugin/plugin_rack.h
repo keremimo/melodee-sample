@@ -6,6 +6,7 @@
 #include "melodee/plugin/plugin_panel.h"
 #include "melodee/plugin/plugin_screen.h"
 #include "melodee/plugin/plugin_sleep.h"
+#include "melodee/plugin/plugin_watch.h"
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -86,8 +87,10 @@ public:
     // A copy of `entry` onto `copy` (a track copy): the same plug-in and state.
     void clone(unsigned entry, unsigned copy);
     // The same plug-in opened again at the next sync() (picked again after it failed or stopped working), with the
-    // state it last had.
+    // state it last had. The live rack also does it by itself for a plug-in whose file on the card changed
+    // (plugin/plugin_watch.h); reload_notice() then names it, once ("" none).
     void reload(unsigned entry);
+    std::string reload_notice();
     // One entry's state as it is now, as states() gives it.
     std::vector<uint8_t> state(unsigned entry) const;
     // Undo or redo of a plug-in replaced (shell/plugin_jobs.cpp): the entry opened again at the next sync() with
@@ -166,6 +169,7 @@ private:
         std::string preset;               // the preset picked last (PluginRef::preset), named again when it reopens
         std::string error;
         PluginFile file;
+        FileWatch watch;                  // its file on the card, as it was opened (plugin/plugin_watch.h)
     };
     struct Job {
         enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep, Presets } kind = Kind::Browse;
@@ -186,6 +190,8 @@ private:
     void list(const std::string& folder, const std::string& row, int32_t row_id); // `row` as in browse()
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
+    void watch_files();                             // plug-ins whose file changed: opened again (live rack only)
+    void keep_state(Entry& entry);                  // a working plug-in's state now into `state` (under `lock`)
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
     void write_page_problems(const std::string& top); // the page files' problems on the card (plugin/page_file.h)
     void write_screen_problems(const std::string& top); // the companion screens' (plugin/companion_package.h)
@@ -237,6 +243,8 @@ private:
     uint32_t companion_sessions = 0;
     std::set<std::string> companion_stopped;
     std::vector<std::string> screen_notices;
+    std::vector<std::string> reload_notices;        // plug-ins opened again as their file changed (under `lock`)
+    uint32_t watch_last = 0;                        // when watch_files() last looked (rack's thread)
     std::map<std::string, std::vector<std::string>> screen_problems;
     std::string screen_problems_written;
     std::thread screen_thread;

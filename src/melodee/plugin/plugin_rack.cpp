@@ -852,19 +852,65 @@ PluginRack::Usage PluginRack::usage() const {
     return out;
 }
 
+void PluginRack::keep_state(Entry& e) {
+    if (!e.live || e.status != PluginStatus::Ready) return;
+    auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
+    if (bridged && bridged->bridgeDied()) return; // a working one keeps what it is now; a dead bridge has nothing to say
+    juce::MemoryBlock block;
+    e.live->instance->getStateInformation(block);
+    e.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
+}
+
 void PluginRack::reload(unsigned entry) {
     if (entry >= max_plugins) return;
     std::lock_guard<std::mutex> held(lock);
     auto& e = entries[entry];
-    if (e.live && e.status == PluginStatus::Ready) {
-        auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
-        if (!bridged || !bridged->bridgeDied()) { // a working one keeps what it is now; a dead bridge has nothing to say
-            juce::MemoryBlock block;
-            e.live->instance->getStateInformation(block);
-            e.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
+    keep_state(e);
+    e.reload = true;
+}
+
+std::string PluginRack::reload_notice() {
+    std::lock_guard<std::mutex> held(lock);
+    if (reload_notices.empty()) return {};
+    std::string first = reload_notices.front();
+    reload_notices.erase(reload_notices.begin());
+    return first;
+}
+
+// The file each plug-in in use was opened from, every watch_every_ms: one changed, once it held still, opened again
+// with what it is now, as picking it again does (plugin/plugin_watch.h). Its stat()s outside `lock`. The live rack
+// only: a print host's rack plays a copy of the project, once.
+void PluginRack::watch_files() {
+    if (!stage_tag.empty()) return;
+    const uint32_t now = uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    if (now - watch_last < watch_every_ms) return;
+    watch_last = now;
+    struct Look { unsigned entry; uint32_t generation; std::string path; FileStamp stamp; };
+    std::vector<Look> looks;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        for (unsigned e = 0; e < max_plugins; ++e) {
+            const auto& entry = entries[e];
+            const bool ready = entry.live && entry.status == PluginStatus::Ready;
+            if (!entry.watch.watching || !(ready || entry.status == PluginStatus::Failed) || entry.reload) continue;
+            looks.push_back({e, entry.generation, entry.file.library.empty() ? entry.file.path : entry.file.library, {}});
         }
     }
-    e.reload = true;
+    if (looks.empty()) return;
+    for (auto& l : looks) l.stamp = stamp_of(l.path);
+    std::lock_guard<std::mutex> held(lock);
+    for (const auto& l : looks) {
+        auto& entry = entries[l.entry];
+        if (entry.generation != l.generation) continue; // replaced or opened again meanwhile
+        if (!watch_look(entry.watch, l.stamp, now)) continue;
+        keep_state(entry);
+        entry.reload = true; // the next sync() opens it again
+        const std::string said = "Reloaded " + entry.file.name; // (once for tracks that share it)
+        if (std::find(reload_notices.begin(), reload_notices.end(), said) == reload_notices.end())
+            reload_notices.push_back(said);
+        std::fprintf(stderr, "plugins: %s changed on the card, opened again\n", entry.file.path.c_str());
+    }
 }
 
 std::vector<uint8_t> PluginRack::state(unsigned entry) const {
@@ -1261,6 +1307,7 @@ void PluginRack::run() {
                 held.unlock();
                 free_retired();
                 idle_plugins();
+                watch_files();
                 continue;
             }
             job = std::move(jobs.front());
@@ -1438,12 +1485,14 @@ void PluginRack::load(const Job& job) {
     // Plugins folder: on the card in now, in Melodee/Plugins.
     std::string path = card_plugin_path(top, job.path);
     auto file = describe_plugin(path);
+    const FileStamp stamp = stamp_of(file.library.empty() ? file.path : file.library); // what is copied below
     std::vector<uint8_t> state;
     {
         std::lock_guard<std::mutex> held(lock);
         auto& entry = entries[job.entry];
         if (entry.generation != job.generation) return; // changed again since
         entry.file = file;
+        entry.watch = {stamp, {}, 0, true};
         state = entry.state;
     }
     auto fail = [&](const std::string& why) {
@@ -1607,6 +1656,7 @@ void PluginRack::unload(unsigned entry, uint32_t generation) {
         old = e.live;
         e.live = nullptr;
         e.file = {};
+        e.watch = {};                            // (nothing to watch until something opens there again)
         if (old) retiring.push_back(old);
     }
     if (old && !offer(entry, nullptr)) {

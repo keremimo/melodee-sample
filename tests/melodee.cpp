@@ -53,6 +53,7 @@
 #include "melodee/model/print.h"
 #include "melodee/engine/plugin_engine.h"
 #include "melodee/plugin/plugin_sleep.h"
+#include "melodee/plugin/plugin_watch.h"
 #include "melodee/plugin/rate_bridge.h"
 #include "melodee/plugin/idle_gate.h"
 #include "melodee/engine/punch.h"
@@ -11709,6 +11710,33 @@ void tempo_lane_p5() {
     }
 }
 
+// A plug-in's file changed on the card (plugin/plugin_watch.h): opened again once it has held still a second; not
+// while it is still changing, not for a file gone, not twice for one change; one not there when it opened counts as
+// changed once it is there. stamp_of(): a file's size and time, none for one not there.
+void plugin_file_watch() {
+    FileWatch w {{100, 5}, {}, 0, true};
+    CHECK(!watch_look(w, {100, 5}, 0));                  // the same
+    CHECK(!watch_look(w, {}, 2000));                     // gone
+    CHECK(!watch_look(w, {120, 6}, 4000));               // changed: from now
+    CHECK(!watch_look(w, {140, 7}, 4500));               // still changing
+    CHECK(!watch_look(w, {140, 7}, 5000));               // half a second still
+    CHECK((watch_look(w, {140, 7}, 5600) && w.opened == FileStamp {140, 7}));   // a second still: again
+    CHECK(!watch_look(w, {140, 7}, 9000));               // once
+    FileWatch none;                                       // opened from no file yet
+    CHECK(!watch_look(none, {1, 1}, 0) && !watch_look(none, {1, 1}, 5000));
+    FileWatch missing {{}, {}, 0, true};                  // not on the card when it opened
+    CHECK(!watch_look(missing, {10, 1}, 100) && watch_look(missing, {10, 1}, 1200));
+    const auto path = (std::filesystem::temp_directory_path() / "melodee-watch-test.clap").string();
+    { std::ofstream f(path, std::ios::binary); f << "abc"; }
+    const auto a = stamp_of(path);
+    CHECK(a.there() && a.size == 3);
+    { std::ofstream f(path, std::ios::binary | std::ios::app); f << "defg"; }
+    const auto b = stamp_of(path);
+    CHECK(b.size == 7 && b != a);
+    std::filesystem::remove(path);
+    CHECK(!stamp_of(path).there());
+}
+
 // Freeze plan F2d: a deep freeze in the file and in the plug-in rack's bookkeeping (plugin/plugin_sleep.h). FRZN
 // keeps Deep; the plug-in states go and come back byte for byte. A project opened with a deep-frozen track never
 // loads that track's plug-ins (its own and its chain's), keeps their state as the file had it, and loads them with
@@ -13398,6 +13426,7 @@ int main() {
     jam_list();
     banks_f1();
     deep_freeze_f2d();
+    plugin_file_watch();
     midi_tracks_p4();
     mix_motion_p4();
     keyed_dynamics_p4();

@@ -350,6 +350,7 @@ void Context::companion_requests() {
         apply(b, int(std::lround(std::clamp(r.value, 0.0f, 1.0f) * plugin_param_max)));
     }
     if (const auto why = plugins->screen_notice(); !why.empty()) notice(why);
+    if (const auto again = plugins->reload_notice(); !again.empty()) notice(again); // its file changed on the card
 }
 
 // An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).

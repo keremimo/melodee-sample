@@ -74,6 +74,14 @@ The same page updates Melodee: drop the release zip on **Update**, press
 **Send**, then press **INSTALL** on the MPC. Its **Quickstart** and
 **Manual** tabs hold this guide.
 
+A new build of a plug-in a track uses takes over by itself. Copy it over the
+old file on the card (from this page, over card access, or any other way)
+and a moment after the copy ends Melodee opens it again, with the sound it
+had. The header shows **Reloaded** and the plug-in's name. That track is
+silent while the plug-in opens. Melodee looks only at the plug-in's own file
+(a bundle's library), not at the folders beside it: after changing those,
+pick the plug-in again with **SAMPLE SELECT**.
+
 ## Plug-in instruments
 
 1. Select an empty track with **PAD BANK** + pad. Stage shows the
