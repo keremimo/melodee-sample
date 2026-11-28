@@ -281,7 +281,9 @@ Loading an instrument onto a pad removes the pad's layers.
 
 To play an instrument in pitch on a kit, use **16 LEVELS** with the type
 Scale or Tune (see [16 Levels](#16-levels)). While 16 Levels is on, a MIDI
-keyboard plays the instrument at its real pitch.
+keyboard plays the instrument with the pad's **TUNE**: C4 (key 60) plays it
+as the pad plays it. In Zones, the keyboard plays it at its real pitch, as
+the pads do.
 
 A project saved before keygroup tracks opens each kit's instrument pad as a
 keygroup track of its own, with its notes. A pad of an MPC drum program stays
@@ -721,8 +723,8 @@ were a C, as do the samples of projects saved with older versions.
 
 While 16 Levels is on a kit pad, a MIDI keyboard plays that pad on every key.
 On a sample that holds one note, each key plays its own note. On other
-samples, C4 (key 60) plays the sample as the pad plays it. An instrument
-plays at its real pitch.
+samples and on an instrument, C4 (key 60) plays the sample as the pad plays
+it, with the pad's **TUNE**. In Zones, an instrument plays at its real pitch.
 
 ![Holding 16 LEVELS: Scale](../images/screens/levelsscale.png)
 

@@ -516,8 +516,9 @@ beat; the meters show the mix.
   On a kit pad (no arp), a MIDI keyboard plays that pad on every key
   (`levels_key()`, shell/midi_route.h), whatever the type: key 60 a sample
   as a C (one with a note: each key that note), the pad's Semi kept; an
-  instrument at its real pitch, its Semi undone. The keyboard's velocity
-  plays as it comes.
+  instrument key 60 the pad as its pads play it, its Semi kept too (issue
+  43), and under Zones at its real pitch, its Semi undone, as Zones' pads.
+  The keyboard's velocity plays as it comes.
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); the lit B1 again is 1/4, the lit B3 again 1/64
   (dots under them), and back; straight rates swing with the project. It is
@@ -1554,7 +1555,7 @@ the file holds, to the bit.
   that play from then on (the default first). A hit plays key 60 plus the
   pad's Semi. **16 Levels** on the pad plays it: Tune or Scale for notes,
   Zones its keys that sound one a pad, Velocity through its layers; while 16 Levels is on it, a MIDI keyboard plays
-  it at real pitch. On such a pad Stage's TRIM is **ZONES** (round 3
+  it with the pad's Semi as the pads do (key 60 the pad), at real pitch under Zones. On such a pad Stage's TRIM is **ZONES** (round 3
   "instrument C"): a tile a zone over a keyboard of its range (keys across,
   velocities up, a dot at each root), its format, zones, files, velocity
   layers and round robin above, the zone in hand outlined with its file,

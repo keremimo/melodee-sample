@@ -76,7 +76,7 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     if (t == ui.track) { // as the pads: the arp, Seq Record, Capture's history; Step Edit and Roll write it
         if (down && played == k && tr.engine == EngineKind::Sampler) tr.last_pad = uint8_t((unsigned(k) - sampler_first_note) % sampler_pads);
         key(played, velocity, down);
-        if (levels >= 0) midi_entry(*this, int(sampler_first_note + tr.levels_pad % sampler_pads), k - 60 - (instrument ? int(pad.pitch) : root), uint8_t(velocity), down);
+        if (levels >= 0) midi_entry(*this, int(sampler_first_note + tr.levels_pad % sampler_pads), levels_key_semitones(tr, k, instrument, root), uint8_t(velocity), down);
         else midi_entry(*this, played, 0, uint8_t(velocity), down);
     } else { // a track on its own channel: played as the selected one is, and Seq Record takes it too (every track at once)
         const uint8_t selected = ui.track;
