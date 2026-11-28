@@ -95,7 +95,7 @@ inline unsigned menu_tile_turn(const UiState& ui, unsigned tile, int delta) {
 enum class MenuJob : uint8_t {
     None, SequenceCapture, SequenceName, SequenceFollowAll, SequenceLaunch, SequenceClear,
     PatternDouble, PatternHalf, PatternClear, TrackMove, TrackCopy, TrackClear, Looper, Freeze, ModAdd, Chords, ChordFile, Stems,
-    TrackName, TrackColour,
+    TrackName, TrackColour, SequenceColour,
 };
 struct MenuItem {
     MenuJob job = MenuJob::None;
@@ -131,12 +131,14 @@ inline unsigned menu_here(const Project& project, const UiState& ui, std::array<
     case PageId::Scenes:
         add(J::SequenceCapture, "CAPTURE", "SHIFT + B2");
         add(J::SequenceName, "NAME", "PUSH");
+        add(J::SequenceColour, "COLOUR", "SHIFT + ENCODER"); // the colour sheet (shell/track_colours.h)
         if (follow_shown(ui)) add(J::SequenceFollowAll, "FOLLOW TO ALL", "SHIFT + B3");
         add(J::SequenceLaunch, "LAUNCH", "PAD");
         add(J::SequenceClear, "CLEAR", "ERASE", true);
         break;
     case PageId::Patterns:
         add(J::SequenceLaunch, "LAUNCH SEQUENCE", "PUSH");
+        add(J::SequenceColour, "SEQUENCE COLOUR", "SHIFT + B1, K2");
         add(J::PatternDouble, "DOUBLE", "SHIFT + PAD 3");
         add(J::PatternHalf, "HALF", "SHIFT + PAD 2");
         freeze();

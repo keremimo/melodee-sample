@@ -1519,7 +1519,7 @@ void button_remap() {
         std::array<MenuItem, menu_here_max> items {};
         f.page = PageId::Scenes;
         unsigned n = menu_here(*project, f, items);
-        CHECK(n == 4);
+        CHECK(n == 5); // CAPTURE, NAME, COLOUR, LAUNCH, CLEAR
         for (unsigned k = 0; k < n; ++k) CHECK(items[k].job != MenuJob::SequenceFollowAll);
         f.page = PageId::Mixer; n = menu_here(*project, f, items);
         for (unsigned k = 0; k < n; ++k) CHECK(items[k].job != MenuJob::Looper && items[k].job != MenuJob::Freeze);
@@ -1726,7 +1726,7 @@ void button_remap() {
         std::array<MenuItem, menu_here_max> items {};
         UiState m; m.track = 0;
         m.page = PageId::Scenes;
-        CHECK(menu_here(*project, m, items) == 5 && items[0].job == MenuJob::SequenceCapture && items[4].danger);
+        CHECK(menu_here(*project, m, items) == 6 && items[0].job == MenuJob::SequenceCapture && items[2].job == MenuJob::SequenceColour && items[5].danger);
         m.page = PageId::Mixer;
         unsigned count = menu_here(*project, m, items);
         CHECK(count >= 4 && items[0].job == MenuJob::TrackMove && items[count - 1].job == MenuJob::TrackClear);
@@ -1771,6 +1771,21 @@ void button_remap() {
         for (unsigned n = 0; n < count; ++n) CHECK(items[n].job != MenuJob::TrackColour);
         m.colour_sheet = true; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::ColourPick);
         m.ask = UiState::Ask::ClearTrack; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::Sheet);
+        // A sequence's colour on the same sheet: offered on Sequences' and Patterns' MENU; none, then the sixteen round.
+        CHECK(sequence_colour_step(0, 1) == 1 && sequence_colour_step(0, -1) == 16 && sequence_colour_step(0, 3) == 3);
+        CHECK(sequence_colour_step(16, 1) == 1 && sequence_colour_step(1, -1) == 16 && sequence_colour_step(5, 0) == 5);
+        UiState q; q.colour_sheet = true; q.colour_seq = true; q.colour_scene = 2; q.colour_track = 3;
+        CHECK(colour_sheet_slot(*coloured, q) == -1); // none yet, though track 3 has Sky
+        coloured->scenes[2].colour = 7;
+        CHECK(colour_sheet_slot(*coloured, q) == 6);
+        q.colour_seq = false; CHECK(colour_sheet_slot(*coloured, q) == 4); // the track's again
+        for (PageId page : {PageId::Scenes, PageId::Patterns}) {
+            UiState here; here.page = page;
+            count = menu_here(*coloured, here, items);
+            bool seq = false;
+            for (unsigned n = 0; n < count; ++n) seq |= items[n].job == MenuJob::SequenceColour;
+            CHECK(seq);
+        }
     }
     // An audio track's take on Song (shell/song_take.h): the first empty pattern no clip plays; the clip reaches the bar
     // after the one playing, what was there giving way; closed on the last bar heard.

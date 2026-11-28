@@ -33,7 +33,7 @@ Icon job_icon(MenuJob job) {
     case J::PatternHalf: return Icon::Minus;
     case J::TrackMove: return Icon::Swap;
     case J::TrackCopy: return Icon::Copy;
-    case J::TrackColour: return Icon::Pads;
+    case J::TrackColour: case J::SequenceColour: return Icon::Pads;
     case J::Looper: return Icon::Loop;
     case J::Freeze: return Icon::Snow;
     case J::Stems: return Icon::Layers;

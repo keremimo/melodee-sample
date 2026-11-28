@@ -634,6 +634,11 @@ pattern: what the pattern does after it has played for a while.
 - The sequence launched last is the sequence in hand. The encoder sets its tempo
   (below 30 is None). **SHIFT** + encoder sets its colour: its cell and its pad
   light in it. Push the encoder to name it. **ERASE** clears it.
+- **Sequence colour**: hold the encoder to open the Menu and push **COLOUR**
+  (on Patterns: **SEQUENCE COLOUR**). The pads light in the 16 colours.
+  Press a pad, or turn the encoder, to pick a colour for the sequence in
+  hand. **B3** (**DONE**) or a push keeps it (one undo). **B1** (**BACK**)
+  keeps the colour it had. **B2** (**NONE**) takes its colour away.
 - **K1**–**K3** set the selected pattern's follow action, as on **FOLLOW**.
   **SHIFT** + **K1** sets the second action. **SHIFT** + **B3** (**ALL**)
   puts the follow action on the pattern each other track is on. In Basic

@@ -153,6 +153,22 @@ static SceneState scene_state(const Project& project, unsigned scene) {
     return state;
 }
 
+// The colour sheet's DONE for a sequence (shell/track_colours.h): one undo step when its colour moved from `before`.
+void Context::scene_colour_kept(unsigned scene, uint8_t before) {
+    scene %= pattern_count;
+    const uint8_t now = project.scenes[scene].colour;
+    if (now == before) return;
+    Edit edit;
+    edit.what = "Colour SEQ " + std::to_string(scene + 1);
+    edit.track = ui.track;
+    project.scenes[scene].colour = before; // the edit takes it as it was, then as it is
+    edit.scene_before = std::make_unique<SceneState>(scene_state(project, scene));
+    project.scenes[scene].colour = now;
+    edit.scene_after = std::make_unique<SceneState>(scene_state(project, scene));
+    edits.push(std::move(edit));
+    dirty = true;
+}
+
 // ERASE + pad on Sequences: the sequence keeps nothing, and loses its name, tempo and colour; one undo.
 void Context::clear_scene(unsigned scene) {
     scene %= pattern_count;

@@ -220,7 +220,10 @@ grammar (`shell/pad_light.h`):
   step). `ui::track_slot()` maps a track to its colour for the screen
   (`track_colour`, `knob_shade`), the LEDs (`pad_light::track`) and the Live
   Set export; a sequence's colour and the MENU's groups are the sixteen
-  themselves (`slot_colour`, `pad_light::colour_slot`). Moved, copied or
+  themselves (`slot_colour`, `pad_light::colour_slot`). The same sheet
+  (`ui.colour_seq`) sets the sequence in hand's colour from Sequences'
+  MENU COLOUR or Patterns' SEQUENCE COLOUR: B2 NONE, DONE one undo step
+  (`Context::scene_colour_kept`). Moved, copied or
   cleared, a track keeps its colour.
 - **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
   Full. The LEDs square a level before the 0–127 drive, so below about 0.2

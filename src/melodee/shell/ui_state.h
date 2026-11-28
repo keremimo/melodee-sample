@@ -609,8 +609,9 @@ struct UiState {
     uint8_t chord_index = 0, chord_root = 0, chord_type = 0, chord_invert = 0;
     ProgChord chord_before;
     // TRACK COLOUR (issue 69, shell/track_colours.h): the sheet open, for which track, and its colour before (B1 BACK).
-    bool colour_sheet = false;
-    uint8_t colour_track = 0, colour_before = 0;
+    // colour_seq: the same sheet for sequence colour_scene's colour (Sequences' or Patterns' MENU).
+    bool colour_sheet = false, colour_seq = false;
+    uint8_t colour_track = 0, colour_before = 0, colour_scene = 0;
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

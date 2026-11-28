@@ -94,6 +94,7 @@ void run(Context& c, MenuJob job) {
     case J::PatternClear: ask(c, UiState::Ask::ClearPattern, int(column)); break; // asked first, as Seq + Erase + pad
     case J::TrackName: c.name_track(ui.track); break;
     case J::TrackColour: track_colour_open(c); break;
+    case J::SequenceColour: sequence_colour_open(c); break; // the sequence in hand's
     case J::TrackMove: start_track_pick(ui, true); break;  // then the track, then where
     case J::TrackCopy: start_track_pick(ui, false); break;
     case J::TrackClear: { // asked first, as Pad Bank + Erase + pad

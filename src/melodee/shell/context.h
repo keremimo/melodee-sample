@@ -346,6 +346,7 @@ public:
     void launch_scene(unsigned scene, bool quiet = false); // each track on its kept pattern: a sequence (shell/sequences.h); quiet: no notice (the chain)
     void set_scene_tempo(unsigned scene, int tenths); // below 30 BPM: none of its own
     void set_scene_colour(unsigned scene, int colour); // 0 none, 1-16 a track colour (issue 19)
+    void scene_colour_kept(unsigned scene, uint8_t before); // the colour sheet's DONE: one undo step from `before`
     void name_scene(unsigned scene);                  // the Name sheet
     void name_track(unsigned t);                      // the Name sheet: a name of its own, kept when its sound changes
     void clear_scene(unsigned scene);                 // its kept patterns, name, tempo and colour; one undo

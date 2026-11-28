@@ -20,6 +20,7 @@
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/sequences.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/stage_map.h"
@@ -863,8 +864,8 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         }
         switch (pad_context(ui, t, s.facts, pad)) {
         case PadContext::Sheet: look = sheet_look(s, pad); break;
-        case PadContext::ColourPick: // TRACK COLOUR: the sixteen as the pads sit, the track's bright
-            look = colour_slot(pad, pad == track_colour_slot(s.project.tracks[ui.colour_track % track_count], ui.colour_track) ? full : dim);
+        case PadContext::ColourPick: // TRACK COLOUR or a sequence's: the sixteen as the pads sit, the one it has bright
+            look = colour_slot(pad, int(pad) == colour_sheet_slot(s.project, ui) ? full : dim);
             break;
         case PadContext::Tracks: look = tracks_look(s, pad); break;
         case PadContext::Name: look = name_look(s, pad); break;
